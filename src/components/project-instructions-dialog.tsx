@@ -1,5 +1,7 @@
 import * as React from 'react'
+import { useForm } from '@tanstack/react-form'
 import { IconScript } from '@tabler/icons-react'
+import { z } from 'zod'
 
 import {
   AlertDialog,
@@ -41,15 +43,19 @@ export function ProjectInstructionsDialog({
   onClose: () => void
 }) {
   const t = useMessages(messages)
-  const [draft, setDraft] = React.useState('')
+  const form = useForm({
+    defaultValues: { instructions: project?.instructions ?? '' },
+    validators: { onChange: z.object({ instructions: z.string().max(CUSTOM_INSTRUCTIONS_MAX) }) },
+    onSubmit: ({ value }) => {
+      if (project) setProjectInstructions(project.id, value.instructions)
+      onClose()
+    },
+  })
   React.useEffect(() => {
-    if (project) setDraft(project.instructions ?? '')
+    if (project) form.reset({ instructions: project.instructions ?? '' })
   }, [project?.id])
 
-  function save() {
-    if (project) setProjectInstructions(project.id, draft)
-    onClose()
-  }
+  const save = () => void form.handleSubmit()
 
   return (
     <AlertDialog open={!!project} onOpenChange={(open) => !open && onClose()}>
@@ -63,22 +69,27 @@ export function ProjectInstructionsDialog({
             <AlertDialogDescription>{t.description}</AlertDialogDescription>
           </div>
         </div>
-        <div className="grid gap-1.5">
-          <Textarea
-            autoFocus
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) save()
-            }}
-            maxLength={CUSTOM_INSTRUCTIONS_MAX}
-            placeholder={t.placeholder}
-            className="max-h-[50vh] min-h-40"
-          />
-          <p className="text-right text-xs text-muted-foreground tabular-nums">
-            {draft.length}/{CUSTOM_INSTRUCTIONS_MAX}
-          </p>
-        </div>
+        <form.Field name="instructions">
+          {(field) => (
+            <div className="grid gap-1.5">
+              <Textarea
+                autoFocus
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) save()
+                }}
+                maxLength={CUSTOM_INSTRUCTIONS_MAX}
+                placeholder={t.placeholder}
+                className="max-h-[50vh] min-h-40"
+              />
+              <p className="text-right text-xs text-muted-foreground tabular-nums">
+                {field.state.value.length}/{CUSTOM_INSTRUCTIONS_MAX}
+              </p>
+            </div>
+          )}
+        </form.Field>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="ghost" />}>{t.cancel}</AlertDialogClose>
           <Button onClick={save}>{t.save}</Button>

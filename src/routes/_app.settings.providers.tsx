@@ -1,5 +1,8 @@
 import * as React from 'react'
+import { useDebouncedValue } from '@tanstack/react-pacer'
+import { useForm, useStore } from '@tanstack/react-form'
 import { createFileRoute } from '@tanstack/react-router'
+import { z } from 'zod'
 import { IconExternalLink, IconKey, IconLoader2, IconPencil, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 
 import {
@@ -10,6 +13,7 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { FieldError } from '@/components/field-error'
 import { ProviderModelTable } from '@/components/provider-model-table'
 import type { TestState } from '@/components/provider-model-table'
 import { Badge } from '@/components/ui/badge'
@@ -18,11 +22,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { defineMessages, getLocale, useLocale, useMessages } from '@/lib/i18n'
 import type { CatalogModel } from '@/lib/model-catalog'
-import { refreshProviders, useProviders } from '@/lib/provider-store'
+import { useDeleteProvider, useProviders, useSaveProvider } from '@/lib/provider-store'
 import { getPreset, guessModelApi, MODEL_API_LABELS, PRESETS } from '@/lib/providers'
 import type { ModelApi, ProviderModel, ProviderPreset, ProviderView } from '@/lib/providers'
 import { errorMessage } from '@/lib/utils'
-import { listRemoteModels, lookupModels, removeProvider, testModel, upsertProvider } from '@/server/providers.functions'
+import { listRemoteModels, lookupModels, testModel } from '@/server/providers.functions'
 
 const messages = defineMessages({
   vi: {
@@ -58,6 +62,10 @@ const messages = defineMessages({
     addModel: 'Thêm',
     loadError: (error: string) => `Không tải được danh sách model: ${error}`,
     save: 'Lưu',
+    nameRequired: 'Cần đặt tên hiển thị',
+    keyRequired: 'Cần nhập API key',
+    invalidUrl: 'URL không hợp lệ',
+    urlScheme: 'URL phải bắt đầu bằng http(s)://',
   },
   en: {
     title: 'Providers · Settings · Happier Chat',
@@ -92,6 +100,10 @@ const messages = defineMessages({
     addModel: 'Add',
     loadError: (error: string) => `Could not load the model list: ${error}`,
     save: 'Save',
+    nameRequired: 'Provider name is required',
+    keyRequired: 'An API key is required',
+    invalidUrl: 'Invalid URL',
+    urlScheme: 'URL must start with http(s)://',
   },
 })
 
@@ -109,11 +121,12 @@ function ProvidersPage() {
   const [editing, setEditing] = React.useState<Editing>(null)
   const [deleting, setDeleting] = React.useState<ProviderView | null>(null)
 
+  const remove = useDeleteProvider()
+
   async function confirmDelete() {
     if (!deleting) return
-    await removeProvider({ data: { id: deleting.id } })
+    await remove.mutateAsync(deleting.id)
     setDeleting(null)
-    await refreshProviders()
   }
 
   return (
@@ -240,16 +253,48 @@ function ProviderForm({
 }) {
   const t = useMessages(messages)
   const locale = useLocale()
-  const [name, setName] = React.useState(provider?.name ?? preset.label[locale])
-  const [apiKey, setApiKey] = React.useState('')
-  const [anthropicUrl, setAnthropicUrl] = React.useState(provider?.anthropicUrl ?? preset.anthropicUrl ?? '')
-  const [openaiUrl, setOpenaiUrl] = React.useState(provider?.openaiUrl ?? preset.openaiUrl ?? '')
-  const [modelsUrl, setModelsUrl] = React.useState(provider?.modelsUrl ?? preset.modelsUrl ?? '')
+  const optionalUrl = z
+    .string()
+    .trim()
+    .refine((value) => !value || URL.canParse(value), { error: t.invalidUrl })
+    .refine((value) => !value || /^https?:\/\//.test(value), { error: t.urlScheme })
+  const schema = z.object({
+    name: z.string().trim().min(1, { error: t.nameRequired }).max(60),
+    apiKey: provider ? z.string() : z.string().trim().min(1, { error: t.keyRequired }),
+    anthropicUrl: optionalUrl,
+    openaiUrl: optionalUrl,
+    modelsUrl: optionalUrl,
+  })
+  const save = useSaveProvider()
+  const form = useForm({
+    defaultValues: {
+      name: provider?.name ?? preset.label[locale],
+      apiKey: '',
+      anthropicUrl: provider?.anthropicUrl ?? preset.anthropicUrl ?? '',
+      openaiUrl: provider?.openaiUrl ?? preset.openaiUrl ?? '',
+      modelsUrl: provider?.modelsUrl ?? preset.modelsUrl ?? '',
+    },
+    validators: { onSubmit: schema },
+    onSubmit: async ({ value }) => {
+      // A failed save is shown from the mutation state, and keeps the form open.
+      const saved = await save.mutateAsync({
+        id: provider?.id,
+        name: value.name,
+        preset: preset.id,
+        anthropicUrl: value.anthropicUrl.trim() || null,
+        openaiUrl: value.openaiUrl.trim() || null,
+        modelsUrl: value.modelsUrl.trim() || null,
+        apiKey: value.apiKey.trim() || undefined,
+        models: models.map(({ id, api, enabled }) => ({ id, api, enabled })),
+      }).then(() => true, () => false)
+      if (saved) onDone()
+    },
+  })
+  const { apiKey, anthropicUrl, openaiUrl, modelsUrl } = useStore(form.store, (state) => state.values)
   const [models, setModels] = React.useState<Array<ProviderModel>>(provider?.models ?? [])
   const [manualId, setManualId] = React.useState('')
   const [tests, setTests] = React.useState<Record<string, TestState>>({})
   const [loadingModels, setLoadingModels] = React.useState(false)
-  const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState('')
   const [showAdvanced, setShowAdvanced] = React.useState(preset.id === 'custom')
 
@@ -310,16 +355,15 @@ function ProviderForm({
   // Load the model list as soon as there is a key to try: debounced while typing, and again when the
   // key or an endpoint changes. A saved provider that already has models is not reloaded on open.
   const autoLoadKey = canReach ? [apiKey.trim(), anthropicUrl, openaiUrl, modelsUrl].join('|') : null
+  const [debouncedLoadKey] = useDebouncedValue(autoLoadKey, { wait: 600 })
   const autoLoaded = React.useRef(provider && provider.models.length > 0 ? autoLoadKey : null)
   React.useEffect(() => {
-    if (!autoLoadKey || autoLoadKey === autoLoaded.current) return
+    // Skip while the debounced key lags behind what is currently typed.
+    if (!debouncedLoadKey || debouncedLoadKey !== autoLoadKey || debouncedLoadKey === autoLoaded.current) return
     if (apiKey.trim() && apiKey.trim().length < 8) return
-    const timer = setTimeout(() => {
-      autoLoaded.current = autoLoadKey
-      void loadModels()
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [autoLoadKey])
+    autoLoaded.current = debouncedLoadKey
+    void loadModels()
+  }, [debouncedLoadKey])
 
   async function runTest(model: ProviderModel) {
     setTests((t) => ({ ...t, [model.id]: { status: 'pending' } }))
@@ -340,89 +384,110 @@ function ProviderForm({
     setModels((current) => current.map((m) => (targets.has(m.id) ? { ...m, enabled } : m)))
   }
 
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
-    setError('')
-    setSaving(true)
-    try {
-      await upsertProvider({
-        data: {
-          id: provider?.id,
-          name,
-          preset: preset.id,
-          ...urls,
-          modelsUrl: endpoints.modelsUrl,
-          apiKey: endpoints.apiKey,
-          models: models.map(({ id, api, enabled }) => ({ id, api, enabled })),
-        },
-      })
-      await refreshProviders()
-      onDone()
-    } catch (err) {
-      setError(errorMessage(err))
-      setSaving(false)
-    }
-  }
-
   const enabledCount = models.filter((m) => m.enabled).length
 
   return (
-    <form onSubmit={save} className="flex flex-col gap-6">
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault()
+        void form.handleSubmit()
+      }}
+      className="flex flex-col gap-6"
+    >
       <div className="flex flex-col gap-4 rounded-xl border bg-card p-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="provider-name">{t.displayName}</Label>
-          <Input id="provider-name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="provider-key">API key</Label>
-            {preset.keyUrl && (
-              <a
-                href={preset.keyUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t.getKey} <IconExternalLink className="size-3" />
-              </a>
-            )}
-          </div>
-          <Input
-            id="provider-key"
-            type="password"
-            autoComplete="off"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={provider ? t.keyInUse(provider.keyHint) : t.keyPlaceholder}
-            required={!provider}
-          />
-        </div>
+        <form.Field name="name">
+          {(field) => (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="provider-name">{t.displayName}</Label>
+              <Input
+                id="provider-name"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                required
+                maxLength={60}
+                aria-invalid={field.state.meta.errors.length > 0}
+              />
+              <FieldError errors={field.state.meta.errors} />
+            </div>
+          )}
+        </form.Field>
+        <form.Field name="apiKey">
+          {(field) => (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="provider-key">API key</Label>
+                {preset.keyUrl && (
+                  <a
+                    href={preset.keyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {t.getKey} <IconExternalLink className="size-3" />
+                  </a>
+                )}
+              </div>
+              <Input
+                id="provider-key"
+                type="password"
+                autoComplete="off"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder={provider ? t.keyInUse(provider.keyHint) : t.keyPlaceholder}
+                required={!provider}
+                aria-invalid={field.state.meta.errors.length > 0}
+              />
+              <FieldError errors={field.state.meta.errors} />
+            </div>
+          )}
+        </form.Field>
 
         {showAdvanced ? (
           <>
-            <UrlField
-              id="anthropic-url"
-              label={t.anthropicEndpoint}
-              hint={t.anthropicHint}
-              value={anthropicUrl}
-              onChange={setAnthropicUrl}
-              placeholder="https://api.anthropic.com"
-            />
-            <UrlField
-              id="openai-url"
-              label={t.openaiEndpoint}
-              hint={t.openaiHint}
-              value={openaiUrl}
-              onChange={setOpenaiUrl}
-              placeholder="https://api.example.com/v1"
-            />
-            <UrlField
-              id="models-url"
-              label={t.modelsUrl}
-              hint={t.modelsUrlHint}
-              value={modelsUrl}
-              onChange={setModelsUrl}
-            />
+            <form.Field name="anthropicUrl">
+              {(field) => (
+                <UrlField
+                  id="anthropic-url"
+                  label={t.anthropicEndpoint}
+                  hint={t.anthropicHint}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  onBlur={field.handleBlur}
+                  errors={field.state.meta.errors}
+                  placeholder="https://api.anthropic.com"
+                />
+              )}
+            </form.Field>
+            <form.Field name="openaiUrl">
+              {(field) => (
+                <UrlField
+                  id="openai-url"
+                  label={t.openaiEndpoint}
+                  hint={t.openaiHint}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  onBlur={field.handleBlur}
+                  errors={field.state.meta.errors}
+                  placeholder="https://api.example.com/v1"
+                />
+              )}
+            </form.Field>
+            <form.Field name="modelsUrl">
+              {(field) => (
+                <UrlField
+                  id="models-url"
+                  label={t.modelsUrl}
+                  hint={t.modelsUrlHint}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  onBlur={field.handleBlur}
+                  errors={field.state.meta.errors}
+                />
+              )}
+            </form.Field>
           </>
         ) : (
           <button
@@ -489,15 +554,15 @@ function ProviderForm({
         </div>
       </div>
 
-      {error && (
+      {(error || save.error) && (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {error || errorMessage(save.error)}
         </p>
       )}
 
       <div className="flex gap-2">
-        <Button type="submit" disabled={saving}>
-          {saving && <IconLoader2 className="animate-spin" />}
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending && <IconLoader2 className="animate-spin" />}
           {t.save}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
@@ -514,6 +579,8 @@ function UrlField({
   hint,
   value,
   onChange,
+  onBlur,
+  errors,
   placeholder,
 }: {
   id: string
@@ -521,6 +588,8 @@ function UrlField({
   hint: string
   value: string
   onChange: (value: string) => void
+  onBlur: () => void
+  errors: ReadonlyArray<unknown>
   placeholder?: string
 }) {
   return (
@@ -528,7 +597,16 @@ function UrlField({
       <Label htmlFor={id}>
         {label} <span className="font-normal text-muted-foreground">· {hint}</span>
       </Label>
-      <Input id={id} type="url" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      <Input
+        id={id}
+        type="url"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        aria-invalid={errors.length > 0}
+      />
+      <FieldError errors={errors} />
     </div>
   )
 }

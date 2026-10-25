@@ -1,7 +1,10 @@
-import * as React from 'react'
+import { useForm } from '@tanstack/react-form'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { IconFlask, IconLoader2, IconShield } from '@tabler/icons-react'
+import { z } from 'zod'
 
+import { FieldError } from '@/components/field-error'
 import { Logo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +15,9 @@ import { defineMessages, useMessages } from '@/lib/i18n'
 
 const messages = defineMessages({
   vi: {
+    invalidEmail: 'Email không hợp lệ',
+    passwordRequired: 'Cần nhập mật khẩu',
+    passwordShort: 'Mật khẩu cần ít nhất 8 ký tự',
     mismatch: 'Mật khẩu nhập lại không khớp',
     signupTitle: 'Tạo tài khoản',
     loginTitle: 'Chào mừng trở lại',
@@ -27,6 +33,9 @@ const messages = defineMessages({
     noAccount: 'Chưa có tài khoản? ',
   },
   en: {
+    invalidEmail: 'Enter a valid email address',
+    passwordRequired: 'Password is required',
+    passwordShort: 'Password must be at least 8 characters',
     mismatch: 'Passwords do not match',
     signupTitle: 'Create an account',
     loginTitle: 'Welcome back',
@@ -62,31 +71,38 @@ export function AuthForm({
   const t = useMessages(messages)
   const router = useRouter()
   const navigate = useNavigate()
-  const [error, setError] = React.useState('')
-  const [pending, setPending] = React.useState(false)
+  const queryClient = useQueryClient()
   const isSignup = mode === 'signup'
 
-  async function run(action: () => Promise<unknown>) {
-    setError('')
-    setPending(true)
-    try {
-      await action()
+  const schema = z
+    .object({
+      email: z.email({ error: t.invalidEmail }),
+      password: isSignup ? z.string().min(8, { error: t.passwordShort }) : z.string().min(1, { error: t.passwordRequired }),
+      confirm: z.string(),
+    })
+    .refine((data) => !isSignup || data.password === data.confirm, { path: ['confirm'], error: t.mismatch })
+
+  const auth = useMutation({
+    mutationFn: (action: () => Promise<unknown>) => action(),
+    onSuccess: async () => {
+      // Nothing cached before sign-in belongs to the account that is now signed in.
+      queryClient.clear()
       await router.invalidate()
       await navigate({ href: redirectTo, replace: true })
-    } catch (err) {
-      setError(errorMessage(err))
-      setPending(false)
-    }
-  }
+    },
+  })
+  // Stay disabled after success too, until the navigation unmounts the form.
+  const pending = auth.isPending || auth.isSuccess
+  const error = auth.error ? errorMessage(auth.error) : ''
 
-  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const email = String(form.get('email') ?? '')
-    const password = String(form.get('password') ?? '')
-    if (isSignup && password !== form.get('confirm')) return setError(t.mismatch)
-    void run(() => (isSignup ? signup : login)({ data: { email, password } }))
-  }
+  const form = useForm({
+    defaultValues: { email: '', password: '', confirm: '' },
+    validators: { onSubmit: schema },
+    onSubmit: ({ value }) => {
+      const { email, password } = value
+      auth.mutate(() => (isSignup ? signup : login)({ data: { email, password } }))
+    },
+  })
 
   return (
     <div className="flex min-h-svh items-center justify-center px-4 py-12">
@@ -99,27 +115,73 @@ export function AuthForm({
           </p>
         </div>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-4 rounded-xl border bg-card p-6">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" required autoFocus />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="password">{t.password}</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={isSignup ? 'new-password' : 'current-password'}
-              minLength={isSignup ? 8 : undefined}
-              required
-            />
-          </div>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault()
+            void form.handleSubmit()
+          }}
+          className="flex flex-col gap-4 rounded-xl border bg-card p-6"
+        >
+          <form.Field name="email">
+            {(field) => (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  autoFocus
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                />
+                <FieldError errors={field.state.meta.errors} />
+              </div>
+            )}
+          </form.Field>
+          <form.Field name="password">
+            {(field) => (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="password">{t.password}</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                  required
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                />
+                <FieldError errors={field.state.meta.errors} />
+              </div>
+            )}
+          </form.Field>
           {isSignup && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="confirm">{t.confirmPassword}</Label>
-              <Input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} required />
-            </div>
+            <form.Field name="confirm">
+              {(field) => (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="confirm">{t.confirmPassword}</Label>
+                  <Input
+                    id="confirm"
+                    name="confirm"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    aria-invalid={field.state.meta.errors.length > 0}
+                  />
+                  <FieldError errors={field.state.meta.errors} />
+                </div>
+              )}
+            </form.Field>
           )}
           {error && (
             <p role="alert" className="text-sm text-destructive">
@@ -131,14 +193,14 @@ export function AuthForm({
             {isSignup ? t.signup : t.login}
           </Button>
           {demoEmail && (
-            <Button type="button" variant="outline" size="lg" disabled={pending} onClick={() => run(() => loginDemo())}>
+            <Button type="button" variant="outline" size="lg" disabled={pending} onClick={() => auth.mutate(() => loginDemo())}>
               <IconFlask />
               {t.useDemo}
               <span className="truncate text-muted-foreground">{demoEmail}</span>
             </Button>
           )}
           {adminEmail && (
-            <Button type="button" variant="outline" size="lg" disabled={pending} onClick={() => run(() => loginAdmin())}>
+            <Button type="button" variant="outline" size="lg" disabled={pending} onClick={() => auth.mutate(() => loginAdmin())}>
               <IconShield />
               {t.loginAdmin}
               <span className="truncate text-muted-foreground">{adminEmail}</span>

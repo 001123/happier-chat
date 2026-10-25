@@ -1,11 +1,14 @@
-import * as React from 'react'
+import { useForm } from '@tanstack/react-form'
+import { useMutation } from '@tanstack/react-query'
 import { createFileRoute, useRouteContext, useRouter } from '@tanstack/react-router'
 import { IconLoader2 } from '@tabler/icons-react'
+import { z } from 'zod'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { defineMessages, getLocale, LOCALE_TAGS, useLocale, useMessages } from '@/lib/i18n'
+import { firstError } from '@/lib/form'
 import { errorMessage } from '@/lib/utils'
 import { PROFILE_NAME_MAX, updateProfile } from '@/server/profile.functions'
 
@@ -52,28 +55,20 @@ function ProfilePage() {
   const locale = useLocale()
   const { user } = useRouteContext({ from: '/_app' })
   const router = useRouter()
-  const [name, setName] = React.useState(user.name)
-  const [saving, setSaving] = React.useState(false)
-  const [saved, setSaved] = React.useState(false)
-  const [error, setError] = React.useState('')
-  const dirty = name.trim() !== user.name
-
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    try {
-      const result = await updateProfile({ data: { name } })
-      setName(result.name)
-      setSaved(true)
-      // The user lives in the /_app route context, so re-run its beforeLoad to refresh the sidebar.
-      await router.invalidate()
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setSaving(false)
-    }
-  }
+  const save = useMutation({
+    mutationFn: (name: string) => updateProfile({ data: { name } }),
+    // The user lives in the /_app route context, so re-run its beforeLoad to refresh the sidebar.
+    onSuccess: () => router.invalidate(),
+  })
+  const form = useForm({
+    defaultValues: { name: user.name },
+    validators: { onChange: z.object({ name: z.string().trim().max(PROFILE_NAME_MAX) }) },
+    onSubmit: async ({ value }) => {
+      // The error is shown from the mutation state.
+      const result = await save.mutateAsync(value.name).catch(() => null)
+      if (result) form.setFieldValue('name', result.name)
+    },
+  })
 
   return (
     <div className="flex flex-col gap-8">
@@ -92,38 +87,58 @@ function ProfilePage() {
         </div>
       </div>
 
-      <form onSubmit={save} className="flex flex-col gap-3">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          void form.handleSubmit()
+        }}
+        className="flex flex-col gap-3"
+      >
         <div>
           <label htmlFor="profile-name" className="text-sm font-medium">
             {t.name}
           </label>
           <p className="mt-0.5 text-sm text-muted-foreground">{t.nameHelp}</p>
         </div>
-        <div className="flex gap-2">
-          <Input
-            id="profile-name"
-            value={name}
-            onChange={(event) => {
-              setName(event.target.value)
-              setSaved(false)
-            }}
-            maxLength={PROFILE_NAME_MAX}
-            placeholder={t.namePlaceholder}
-            autoComplete="name"
-            className="max-w-sm bg-card"
-          />
-          <Button type="submit" disabled={saving || !dirty}>
-            {saving && <IconLoader2 className="animate-spin" />}
-            {t.save}
-          </Button>
-        </div>
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        ) : (
-          saved && !dirty && <p className="text-sm text-muted-foreground">{t.saved}</p>
-        )}
+        <form.Field name="name">
+          {(field) => (
+            <div className="flex gap-2">
+              <Input
+                id="profile-name"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => {
+                  field.handleChange(event.target.value)
+                  save.reset()
+                }}
+                maxLength={PROFILE_NAME_MAX}
+                placeholder={t.namePlaceholder}
+                autoComplete="name"
+                className="max-w-sm bg-card"
+              />
+              <form.Subscribe selector={(state) => state.canSubmit}>
+                {(canSubmit) => (
+                  <Button type="submit" disabled={save.isPending || !canSubmit || field.state.value.trim() === user.name}>
+                    {save.isPending && <IconLoader2 className="animate-spin" />}
+                    {t.save}
+                  </Button>
+                )}
+              </form.Subscribe>
+            </div>
+          )}
+        </form.Field>
+        <form.Subscribe selector={(state) => state.values.name}>
+          {(name) => {
+            const error = save.error ? errorMessage(save.error) : firstError(form.getFieldMeta('name')?.errors ?? [])
+            return error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : (
+              save.isSuccess && name.trim() === user.name && <p className="text-sm text-muted-foreground">{t.saved}</p>
+            )
+          }}
+        </form.Subscribe>
       </form>
 
       <dl className="divide-y rounded-xl border bg-card text-sm">

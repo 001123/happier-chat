@@ -1,8 +1,12 @@
 import * as React from 'react'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { useForm } from '@tanstack/react-form'
+import { queryOptions, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { createFileRoute } from '@tanstack/react-router'
 import { IconCircleCheck, IconLoader2, IconRefresh, IconX } from '@tabler/icons-react'
 
+import { z } from 'zod'
 import { CatalogTable } from '@/components/catalog-table'
+import { FieldError } from '@/components/field-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,6 +60,8 @@ const messages = defineMessages({
     displayName: 'Tên hiển thị',
     restore: 'Khôi phục gốc',
     save: 'Lưu',
+    wholeNumber: 'Nhập số nguyên dương',
+    nonNegative: 'Nhập số không âm',
   },
   en: {
     title: 'Models · Administration · Happier Chat',
@@ -92,18 +98,22 @@ const messages = defineMessages({
     displayName: 'Display name',
     restore: 'Restore original',
     save: 'Save',
+    wholeNumber: 'Enter a positive whole number',
+    nonNegative: 'Enter a number that is 0 or more',
   },
 })
 
+const adminCatalogQuery = queryOptions({ queryKey: ['admin', 'catalog'], queryFn: () => getAdminCatalog() })
+
 export const Route = createFileRoute('/_app/settings/admin/models')({
   head: () => ({ meta: [{ title: messages[getLocale()].title }] }),
-  loader: () => getAdminCatalog(),
+  loader: ({ context }) => context.queryClient.ensureQueryData(adminCatalogQuery),
   component: ModelsAdminPage,
 })
 
 function ModelsAdminPage() {
   const t = useMessages(messages)
-  const { meta, rows } = Route.useLoaderData()
+  const { data: { meta, rows } } = useSuspenseQuery(adminCatalogQuery)
   const [editing, setEditing] = React.useState<AdminCatalogRow | null>(null)
 
   return (
@@ -131,13 +141,28 @@ function ModelsAdminPage() {
 function SyncPanel({ providers, syncedAt, modelCount }: { providers: Array<string>; syncedAt: number | null; modelCount: number }) {
   const t = useMessages(messages)
   const locale = useLocale()
-  const router = useRouter()
+  const queryClient = useQueryClient()
   const [selected, setSelected] = React.useState(providers)
   const [adding, setAdding] = React.useState('')
   const [preview, setPreview] = React.useState<SyncPreview | null>(null)
   const [available, setAvailable] = React.useState<Array<{ id: string; name: string; models: number }>>([])
-  const [busy, setBusy] = React.useState<'preview' | 'apply' | null>(null)
-  const [error, setError] = React.useState('')
+
+  const check = useMutation({
+    mutationFn: () => previewCatalogSync({ data: { providers: selected } }),
+    onSuccess: (result) => {
+      setPreview(result)
+      if (result.status === 'ready') setAvailable(result.available)
+    },
+  })
+  const apply = useMutation({
+    mutationFn: (token: string) => applyCatalogSync({ data: { token } }),
+    onSuccess: async () => {
+      setPreview(null)
+      await queryClient.invalidateQueries(adminCatalogQuery)
+    },
+  })
+  const busy = check.isPending ? 'preview' : apply.isPending ? 'apply' : null
+  const error = check.error ?? apply.error
 
   function changeSelection(next: Array<string>) {
     setSelected(next)
@@ -148,35 +173,6 @@ function SyncPanel({ providers, syncedAt, modelCount }: { providers: Array<strin
     const id = adding.trim()
     if (id && !selected.includes(id)) changeSelection([...selected, id])
     setAdding('')
-  }
-
-  async function check() {
-    setBusy('preview')
-    setError('')
-    try {
-      const result = await previewCatalogSync({ data: { providers: selected } })
-      setPreview(result)
-      if (result.status === 'ready') setAvailable(result.available)
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function apply() {
-    if (preview?.status !== 'ready') return
-    setBusy('apply')
-    setError('')
-    try {
-      await applyCatalogSync({ data: { token: preview.token } })
-      setPreview(null)
-      await router.invalidate()
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(null)
-    }
   }
 
   return (
@@ -190,7 +186,7 @@ function SyncPanel({ providers, syncedAt, modelCount }: { providers: Array<strin
               : t.neverSynced}
           </p>
         </div>
-        <Button variant="outline" onClick={check} disabled={busy !== null || selected.length === 0}>
+        <Button variant="outline" onClick={() => check.mutate()} disabled={busy !== null || selected.length === 0}>
           {busy === 'preview' ? <IconLoader2 className="animate-spin" /> : <IconRefresh />}
           {t.checkUpdates}
         </Button>
@@ -244,7 +240,7 @@ function SyncPanel({ providers, syncedAt, modelCount }: { providers: Array<strin
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {errorMessage(error)}
         </p>
       )}
 
@@ -278,7 +274,7 @@ function SyncPanel({ providers, syncedAt, modelCount }: { providers: Array<strin
             </ul>
           )}
           <div className="flex gap-2">
-            <Button onClick={apply} disabled={busy !== null}>
+            <Button onClick={() => apply.mutate(preview.token)} disabled={busy !== null}>
               {busy === 'apply' && <IconLoader2 className="animate-spin" />}
               {t.apply}
             </Button>
@@ -322,50 +318,67 @@ function OverrideSheet({ row, onClose }: { row: AdminCatalogRow | null; onClose:
 
 function OverrideForm({ row, onClose }: { row: AdminCatalogRow; onClose: () => void }) {
   const t = useMessages(messages)
-  const router = useRouter()
-  const fields: Array<FieldKey> = ['name', ...NUMBER_FIELDS.map((field) => field.key)]
-  const [values, setValues] = React.useState<Record<FieldKey, string>>(
-    () => Object.fromEntries(fields.map((key) => [key, String(readField(row.override, key) ?? '')])) as Record<FieldKey, string>,
-  )
-  const [saving, setSaving] = React.useState(false)
-  const [error, setError] = React.useState('')
+  const queryClient = useQueryClient()
 
-  async function save(override: CatalogOverride | null) {
-    setSaving(true)
-    setError('')
-    try {
-      await updateCatalogOverride({ data: { providerId: row.providerId, modelId: row.model.id, override } })
-      await router.invalidate()
+  // Empty means "use the catalog value"; anything else must match what updateCatalogOverride accepts.
+  const blank = (check: (n: number) => boolean, error: string) =>
+    z.string().refine((value) => value.trim() === '' || (Number.isFinite(Number(value)) && check(Number(value))), { error })
+  const tokens = blank((n) => Number.isInteger(n) && n > 0, t.wholeNumber)
+  const price = blank((n) => n >= 0, t.nonNegative)
+  const schema = z.object({
+    name: z.string().max(200),
+    context: tokens,
+    output: tokens,
+    cost: z.object({ input: price, output: price, cacheRead: price, cacheWrite: price }),
+  })
+
+  const save = useMutation({
+    mutationFn: (override: CatalogOverride | null) =>
+      updateCatalogOverride({ data: { providerId: row.providerId, modelId: row.model.id, override } }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(adminCatalogQuery)
       onClose()
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setSaving(false)
-    }
-  }
+    },
+  })
 
-  function buildOverride(): CatalogOverride {
-    const number = (key: FieldKey) => (values[key].trim() === '' ? undefined : Number(values[key]))
-    const cost = {
-      input: number('cost.input'),
-      output: number('cost.output'),
-      cacheRead: number('cost.cacheRead'),
-      cacheWrite: number('cost.cacheWrite'),
-    }
-    return {
-      name: values.name.trim() || undefined,
-      context: number('context'),
-      output: number('output'),
-      cost: Object.values(cost).some((value) => value !== undefined) ? cost : undefined,
-    }
-  }
+  const initial = (key: FieldKey) => String(readField(row.override, key) ?? '')
+  const form = useForm({
+    defaultValues: {
+      name: initial('name'),
+      context: initial('context'),
+      output: initial('output'),
+      cost: {
+        input: initial('cost.input'),
+        output: initial('cost.output'),
+        cacheRead: initial('cost.cacheRead'),
+        cacheWrite: initial('cost.cacheWrite'),
+      },
+    },
+    validators: { onChange: schema },
+    onSubmit: ({ value }) => {
+      const number = (text: string) => (text.trim() === '' ? undefined : Number(text))
+      const cost = {
+        input: number(value.cost.input),
+        output: number(value.cost.output),
+        cacheRead: number(value.cost.cacheRead),
+        cacheWrite: number(value.cost.cacheWrite),
+      }
+      save.mutate({
+        name: value.name.trim() || undefined,
+        context: number(value.context),
+        output: number(value.output),
+        cost: Object.values(cost).some((entry) => entry !== undefined) ? cost : undefined,
+      })
+    },
+  })
 
   return (
     <form
+      noValidate
       className="flex h-full flex-col"
       onSubmit={(event) => {
         event.preventDefault()
-        save(buildOverride())
+        void form.handleSubmit()
       }}
     >
       <SheetHeader>
@@ -377,42 +390,54 @@ function OverrideForm({ row, onClose }: { row: AdminCatalogRow; onClose: () => v
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4">
         <p className="text-sm text-muted-foreground">{t.overrideHelp}</p>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="override-name">{t.displayName}</Label>
-          <Input
-            id="override-name"
-            value={values.name}
-            onChange={(event) => setValues({ ...values, name: event.target.value })}
-            placeholder={row.model.name}
-          />
-        </div>
-        {NUMBER_FIELDS.map((field) => (
-          <div key={field.key} className="flex flex-col gap-1.5">
-            <Label htmlFor={`override-${field.key}`}>{t.fields[field.key]}</Label>
-            <Input
-              id={`override-${field.key}`}
-              type="number"
-              min={0}
-              step={field.key.startsWith('cost.') ? 'any' : 1}
-              value={values[field.key]}
-              onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
-              placeholder={String(readField(row.model, field.key) ?? '—')}
-            />
-          </div>
+        <form.Field name="name">
+          {(field) => (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="override-name">{t.displayName}</Label>
+              <Input
+                id="override-name"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+                placeholder={row.model.name}
+              />
+            </div>
+          )}
+        </form.Field>
+        {NUMBER_FIELDS.map((spec) => (
+          <form.Field key={spec.key} name={spec.key}>
+            {(field) => (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`override-${spec.key}`}>{t.fields[spec.key]}</Label>
+                <Input
+                  id={`override-${spec.key}`}
+                  type="number"
+                  min={0}
+                  step={spec.key.startsWith('cost.') ? 'any' : 1}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                  placeholder={String(readField(row.model, spec.key) ?? '—')}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                />
+                <FieldError errors={field.state.meta.errors} />
+              </div>
+            )}
+          </form.Field>
         ))}
-        {error && (
+        {save.error && (
           <p role="alert" className="text-sm text-destructive">
-            {error}
+            {errorMessage(save.error)}
           </p>
         )}
       </div>
 
       <SheetFooter className="flex-row justify-between">
-        <Button type="button" variant="ghost" onClick={() => save(null)} disabled={saving || !row.override}>
+        <Button type="button" variant="ghost" onClick={() => save.mutate(null)} disabled={save.isPending || !row.override}>
           {t.restore}
         </Button>
-        <Button type="submit" disabled={saving}>
-          {saving && <IconLoader2 className="animate-spin" />}
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending && <IconLoader2 className="animate-spin" />}
           {t.save}
         </Button>
       </SheetFooter>
