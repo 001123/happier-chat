@@ -1,5 +1,4 @@
-import { useSyncExternalStore } from 'react'
-
+import { createPersistedStore, useStoreValue } from './store'
 import type { Locale } from './i18n'
 
 export type Mode = 'light' | 'dark'
@@ -161,8 +160,7 @@ export function readableOn(hex: string) {
 const KEY = 'custom-colors'
 const EMPTY: CustomColors = { light: {}, dark: {} }
 const varMap = Object.fromEntries(colorTokens.map((t) => [t.key, t.vars]))
-const listeners = new Set<() => void>()
-let cache: CustomColors | null = null
+const colorsStore = createPersistedStore<CustomColors>(KEY, EMPTY)
 
 export const customColorsScript = `(() => {
   try {
@@ -174,36 +172,19 @@ export const customColorsScript = `(() => {
   } catch {}
 })()`
 
-function read(): CustomColors {
-  if (cache) return cache
-  try {
-    cache = { ...EMPTY, ...JSON.parse(localStorage.getItem(KEY) ?? 'null') }
-  } catch {
-    cache = EMPTY
-  }
-  return cache!
-}
-
 function write(colors: CustomColors) {
-  cache = colors
-  localStorage.setItem(KEY, JSON.stringify(colors))
+  colorsStore.setState(() => colors)
   applyCustomColors()
-  listeners.forEach((l) => l())
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
 }
 
 export function useCustomColors() {
-  return useSyncExternalStore(subscribe, read, () => EMPTY)
+  return useStoreValue(colorsStore, (state) => state, () => EMPTY)
 }
 
 export function applyCustomColors() {
   const root = document.documentElement
   const mode: Mode = root.classList.contains('dark') ? 'dark' : 'light'
-  const palette = read()[mode]
+  const palette = colorsStore.get()[mode]
   for (const token of colorTokens) {
     const value = palette[token.key]
     for (const v of token.vars) {
@@ -214,7 +195,7 @@ export function applyCustomColors() {
 }
 
 export function setColor(mode: Mode, key: ColorKey, value: string | undefined) {
-  const current = read()
+  const current = colorsStore.get()
   const palette = { ...current[mode] }
   if (value === undefined || value === defaultColors[mode][key]) delete palette[key]
   else palette[key] = value
@@ -222,7 +203,7 @@ export function setColor(mode: Mode, key: ColorKey, value: string | undefined) {
 }
 
 export function setPrimary(mode: Mode, value: string) {
-  const current = read()
+  const current = colorsStore.get()
   const palette: Palette = { ...current[mode], primary: value, primaryForeground: readableOn(value) }
   for (const key of ['primary', 'primaryForeground'] as const) {
     if (palette[key] === defaultColors[mode][key]) delete palette[key]
@@ -255,5 +236,5 @@ export function isPresetActive(preset: ThemePreset, colors: CustomColors, mode: 
 }
 
 export function resetColors(mode?: Mode) {
-  write(mode ? { ...read(), [mode]: {} } : EMPTY)
+  write(mode ? { ...colorsStore.get(), [mode]: {} } : EMPTY)
 }

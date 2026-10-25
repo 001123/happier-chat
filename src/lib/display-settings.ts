@@ -1,6 +1,5 @@
-import { useSyncExternalStore } from 'react'
-
 import { defineMessages, useMessages } from './i18n'
+import { createPersistedStore, useStoreValue } from './store'
 
 export type DisplaySettings = {
   uiScale: number
@@ -39,8 +38,7 @@ export function useScaleOptions() {
 
 const KEY = 'display-settings'
 export const DEFAULTS: DisplaySettings = { uiScale: 1, chatFontScale: 1, leftSidebarOpen: true, rightSidebarOpen: false }
-const listeners = new Set<() => void>()
-let cache: DisplaySettings | null = null
+const displayStore = createPersistedStore(KEY, DEFAULTS)
 
 export const displaySettingsScript = `(() => {
   try {
@@ -53,22 +51,11 @@ export const displaySettingsScript = `(() => {
 })()`
 
 export function readDisplaySettings(): DisplaySettings {
-  if (cache) return cache
-  try {
-    cache = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? 'null') }
-  } catch {
-    cache = DEFAULTS
-  }
-  return cache!
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
+  return displayStore.get()
 }
 
 export function useDisplaySettings() {
-  return useSyncExternalStore(subscribe, readDisplaySettings, () => DEFAULTS)
+  return useStoreValue(displayStore, (state) => state, () => DEFAULTS)
 }
 
 function apply({ uiScale, chatFontScale, leftSidebarOpen }: DisplaySettings) {
@@ -81,8 +68,6 @@ function apply({ uiScale, chatFontScale, leftSidebarOpen }: DisplaySettings) {
 }
 
 export function setDisplaySettings(patch: Partial<DisplaySettings>) {
-  cache = { ...readDisplaySettings(), ...patch }
-  localStorage.setItem(KEY, JSON.stringify(cache))
-  apply(cache)
-  listeners.forEach((l) => l())
+  displayStore.setState((prev) => ({ ...prev, ...patch }))
+  apply(displayStore.get())
 }

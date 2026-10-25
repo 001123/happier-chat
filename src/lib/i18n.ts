@@ -1,6 +1,8 @@
-import { useSyncExternalStore } from 'react'
+import { Store } from '@tanstack/react-store'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
+
+import { useStoreValue } from '@/lib/store'
 
 export const LOCALES = ['vi', 'en'] as const
 export type Locale = (typeof LOCALES)[number]
@@ -35,27 +37,17 @@ export function getLocale(): Locale {
   return isLocale(value) ? value : DEFAULT_LOCALE
 }
 
-const listeners = new Set<() => void>()
-let cache: Locale | null = null
-
-function read() {
-  return (cache ??= getLocale())
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
+// Never written on the server, where the locale is per request (see getLocale).
+const localeStore = new Store<Locale>(typeof window === 'undefined' ? DEFAULT_LOCALE : getLocale())
 
 export function useLocale(): Locale {
-  return useSyncExternalStore(subscribe, read, getLocale)
+  return useStoreValue(localeStore, (locale) => locale, getLocale)
 }
 
 export function setLocale(locale: Locale) {
-  cache = locale
+  localeStore.setState(() => locale)
   document.cookie = `${COOKIE}=${locale}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`
   document.documentElement.lang = locale
-  listeners.forEach((l) => l())
 }
 
 type Messages = Record<string, unknown>

@@ -1,10 +1,10 @@
-import { useSyncExternalStore } from 'react'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 
 import { isEffort } from '@/lib/effort'
 import type { Effort } from '@/lib/effort'
 import { defineMessages, useMessages } from '@/lib/i18n'
+import { createPersistedStore, useStoreValue } from '@/lib/store'
 import type { Locale } from '@/lib/i18n'
 
 /** `model` is a `<providerId>/<modelId>` key, see `modelKey()`. */
@@ -56,7 +56,6 @@ export function resolveReplyLanguages(settings: ChatSettings, uiLocale: Locale):
   return settings.replyLanguages ?? [uiLocale]
 }
 
-const KEY = 'chat-settings'
 const DEFAULTS: ChatSettings = {
   showThinking: true,
   showTools: true,
@@ -66,8 +65,6 @@ const DEFAULTS: ChatSettings = {
   customInstructions: '',
   replyLanguages: null,
 }
-const listeners = new Set<() => void>()
-let cache: ChatSettings | null = null
 
 /** Mirrors the composer's model and effort so the server renders the composer as the browser will show it. */
 export const COMPOSER_COOKIE = 'chat_composer'
@@ -90,35 +87,20 @@ function writeCookie({ model, effort }: ChatSettings) {
   document.cookie = `${COMPOSER_COOKIE}=${value}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
 }
 
-function read(): ChatSettings {
-  if (cache) return cache
-  try {
-    cache = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? 'null') }
-  } catch {
-    cache = DEFAULTS
-  }
-  // Settings saved before the cookie existed still need mirroring for the next server render.
-  writeCookie(cache!)
-  return cache!
-}
+const chatStore = createPersistedStore('chat-settings', DEFAULTS)
+// Settings saved before the cookie existed still need mirroring for the next server render.
+if (typeof window !== 'undefined') writeCookie(chatStore.get())
 
 // On the server every request reads its own cookie; in the browser hydration needs one stable snapshot.
 let hydrationSnapshot: ChatSettings | null = null
 const readServerSnapshot = () =>
   typeof window === 'undefined' ? fromCookie() : (hydrationSnapshot ??= fromCookie())
 
-function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-
 export function useChatSettings() {
-  return useSyncExternalStore(subscribe, read, readServerSnapshot)
+  return useStoreValue(chatStore, (state) => state, readServerSnapshot)
 }
 
 export function setChatSetting<K extends keyof ChatSettings>(key: K, value: ChatSettings[K]) {
-  cache = { ...read(), [key]: value }
-  localStorage.setItem(KEY, JSON.stringify(cache))
-  if (key === 'model' || key === 'effort') writeCookie(cache)
-  listeners.forEach((l) => l())
+  chatStore.setState((prev) => ({ ...prev, [key]: value }))
+  if (key === 'model' || key === 'effort') writeCookie(chatStore.get())
 }
