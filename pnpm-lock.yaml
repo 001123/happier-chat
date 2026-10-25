@@ -56,6 +56,9 @@ importers:
       '@tanstack/ai-gemini':
         specifier: ^1.0.0
         version: 1.0.0(@modelcontextprotocol/sdk@1.32.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@tanstack/ai@1.0.0(@opentelemetry/api@1.10.0)(zod@4.6.7))
+      '@tanstack/ai-isolate-quickjs':
+        specifier: ^1.0.0
+        version: 1.0.0(@tanstack/ai-code-mode@1.0.0(@tanstack/ai@1.0.0(@opentelemetry/api@1.10.0)(zod@4.6.7))(zod@4.6.7))
       '@tanstack/ai-ollama':
         specifier: ^1.0.0
         version: 1.0.0(@tanstack/ai@1.0.0(@opentelemetry/api@1.10.0)(zod@4.6.7))
@@ -454,8 +457,23 @@ packages:
   '@internationalized/number@3.6.9':
     resolution: {integrity: sha512-GgWy2caO/+hV9sT/oCTWGHvbjmJMPT9kkXzoKRLnkEq7adghhR7UprhvY9sXrKfrp3NcDfhF6QQHXR1KfQbB8g==}
 
+  '@jitl/quickjs-ffi-types@0.31.0':
+    resolution: {integrity: sha512-1yrgvXlmXH2oNj3eFTrkwacGJbmM0crwipA3ohCrjv52gBeDaD7PsTvFYinlAnqU8iPME3LGP437yk05a2oejw==}
+
   '@jitl/quickjs-ffi-types@0.32.0':
     resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
+
+  '@jitl/quickjs-wasmfile-debug-asyncify@0.31.0':
+    resolution: {integrity: sha512-YkdzQdr1uaftFhgEnTRjTTZHk2SFZdpWO7XhOmRVbi6CEVsH9g5oNF8Ta1q3OuSJHRwwT8YsuR1YzEiEIJEk6w==}
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.31.0':
+    resolution: {integrity: sha512-8XvloaaWBONqcHXYs5tWOjdhQVxzULilIfB2hvZfS6S+fI4m2+lFiwQy7xeP8ExHmiZ7D8gZGChNkdLgjGfknw==}
+
+  '@jitl/quickjs-wasmfile-release-asyncify@0.31.0':
+    resolution: {integrity: sha512-uz0BbQYTxNsFkvkurd7vk2dOg57ElTBLCuvNtRl4rgrtbC++NIndD5qv2+AXb6yXDD3Uy1O2PCwmoaH0eXgEOg==}
+
+  '@jitl/quickjs-wasmfile-release-sync@0.31.0':
+    resolution: {integrity: sha512-hYduecOByj9AsAfsJhZh5nA6exokmuFC8cls39+lYmTCGY51bgjJJJwReEu7Ff7vBWaQCL6TeDdVlnp2WYz0jw==}
 
   '@jitl/quickjs-wasmfile-release-sync@0.32.0':
     resolution: {integrity: sha512-BKNDI/TPBfGlLNGYpLrhcDGXmIk4xHm4MRAisOBnOzpXVn9HZWsfmMAc9WMBrAHjvvds6HOikKeaOBKdPdpVrg==}
@@ -1163,6 +1181,11 @@ packages:
     resolution: {integrity: sha512-63StDDoH5ePD4Xux0EEcucmcgqid/XY0P48oOXILQ2d1TkJPPjUgVYkIwO0CmUJkdviIGWshSHuqss29psUmYw==}
     peerDependencies:
       '@tanstack/ai': ^1.0.0
+
+  '@tanstack/ai-isolate-quickjs@1.0.0':
+    resolution: {integrity: sha512-/62KNZYPYlvCIWwpNlRkuh2CxYr8EWuUcB30GQi9BRUV2bM6ooD1HnHwZ4aefKXee7WIjFN+l98UktycXyQ7Ug==}
+    peerDependencies:
+      '@tanstack/ai-code-mode': ^1.0.0
 
   '@tanstack/ai-ollama@1.0.0':
     resolution: {integrity: sha512-UeRo+doR5OMPBH4hybji7IEDt0deCyuhC+NgZuGCAHejjS6Vr46TLonrUwmWHGtcoB8wtLLj7/aK+yFMptcbYA==}
@@ -3263,8 +3286,15 @@ packages:
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
 
+  quickjs-emscripten-core@0.31.0:
+    resolution: {integrity: sha512-oQz8p0SiKDBc1TC7ZBK2fr0GoSHZKA0jZIeXxsnCyCs4y32FStzCW4d1h6E1sE0uHDMbGITbk2zhNaytaoJwXQ==}
+
   quickjs-emscripten-core@0.32.0:
     resolution: {integrity: sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg==}
+
+  quickjs-emscripten@0.31.0:
+    resolution: {integrity: sha512-K7Yt78aRPLjPcqv3fIuLW1jW3pvwO21B9pmFOolsjM/57ZhdVXBr51GqJpalgBlkPu9foAvhEAuuQPnvIGvLvQ==}
+    engines: {node: '>=16.0.0'}
 
   range-parser@1.3.0:
     resolution: {integrity: sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw==}
@@ -4219,7 +4249,25 @@ snapshots:
     dependencies:
       '@swc/helpers': 0.5.23
 
+  '@jitl/quickjs-ffi-types@0.31.0': {}
+
   '@jitl/quickjs-ffi-types@0.32.0': {}
+
+  '@jitl/quickjs-wasmfile-debug-asyncify@0.31.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.31.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
+
+  '@jitl/quickjs-wasmfile-release-asyncify@0.31.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
+
+  '@jitl/quickjs-wasmfile-release-sync@0.31.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
 
   '@jitl/quickjs-wasmfile-release-sync@0.32.0':
     dependencies:
@@ -4827,6 +4875,11 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@tanstack/ai-isolate-quickjs@1.0.0(@tanstack/ai-code-mode@1.0.0(@tanstack/ai@1.0.0(@opentelemetry/api@1.10.0)(zod@4.6.7))(zod@4.6.7))':
+    dependencies:
+      '@tanstack/ai-code-mode': 1.0.0(@tanstack/ai@1.0.0(@opentelemetry/api@1.10.0)(zod@4.6.7))(zod@4.6.7)
+      quickjs-emscripten: 0.31.0
 
   '@tanstack/ai-ollama@1.0.0(@tanstack/ai@1.0.0(@opentelemetry/api@1.10.0)(zod@4.6.7))':
     dependencies:
@@ -7137,9 +7190,21 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
+  quickjs-emscripten-core@0.31.0:
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
+
   quickjs-emscripten-core@0.32.0:
     dependencies:
       '@jitl/quickjs-ffi-types': 0.32.0
+
+  quickjs-emscripten@0.31.0:
+    dependencies:
+      '@jitl/quickjs-wasmfile-debug-asyncify': 0.31.0
+      '@jitl/quickjs-wasmfile-debug-sync': 0.31.0
+      '@jitl/quickjs-wasmfile-release-asyncify': 0.31.0
+      '@jitl/quickjs-wasmfile-release-sync': 0.31.0
+      quickjs-emscripten-core: 0.31.0
 
   range-parser@1.3.0: {}
 

@@ -37,6 +37,7 @@ import { MODE_PROMPTS, isModeId } from '@/lib/modes'
 import type { Weather, WeatherCondition } from '@/lib/tools'
 import { parseModelKey } from '@/lib/providers'
 import { chatPersistenceFor } from '@/server/chat-persistence.server'
+import { createSandboxCodeMode } from '@/server/code-mode.server'
 import { createUserAdapter } from '@/server/providers.server'
 import { getSessionUser } from '@/server/session.server'
 
@@ -153,6 +154,9 @@ const sendEmail = sendEmailDef.server(async () => {
   await sleep(300)
   return { sent: true, messageId: `msg_${Date.now().toString(36)}` }
 })
+
+// execute_typescript: the model writes a program that calls these two tools (and nothing else) from inside the sandbox.
+const codeMode = createSandboxCodeMode([webSearch, fetchPage])
 
 const streamsUrl = process.env.DURABLE_STREAMS_URL
 
@@ -296,6 +300,8 @@ export const Route = createFileRoute('/api/chat')({
             'For any multiple-choice practice or quiz (grammar, vocabulary, reading, trivia...), call show_quiz instead of render_ui: give every option a one-sentence explanation of why it is right or wrong, and a hint that does not give the answer away. The card grades answers itself, so never reveal the answers in the text.',
             'Use render_ui when the answer fits a visual format (comparisons, metrics, tables, schedules, checklists, multi-part content that needs Tabs/Accordion) or when the user needs to choose or fill in information (Choice, Select, Slider, Checkbox, Input). Weather and maps already have their own cards via get_weather/show_map, so do not rebuild them with render_ui. If render_ui returns issues, call it again with the corrected spec. Never write UI patches/JSON in the text reply.',
             'The chat can render Mermaid diagrams: when a diagram, flowchart, or timeline is needed, write it in a ```mermaid block (one statement per line; only wrap node or edge labels in double quotes in flowcharts when they contain special characters, and never wrap the message text of a sequenceDiagram). The chat column is narrow (~640px): prefer `flowchart TB`, keep labels short (under ~6 words, with details in the text), and keep each level to at most 4 nodes. Split large diagrams into several small ones instead of telling the user to paste them into another tool.',
+            'Use execute_typescript when an answer needs exact computation or data processing (arithmetic, dates, unit conversion, sorting, filtering, aggregating or reformatting many values) or when you would otherwise call web_search/fetch_page many times in a row and combine the results: write one short program instead of working it out in your head. Skip it for simple questions. Return the final value from the program and tell the user the result in plain language.',
+            codeMode.systemPrompt,
             'From time to time, use react_to_message to react to the user\'s messages with an emoji when it fits, like a friend texting.',
             ...(mode ? [MODE_PROMPTS[mode]] : []),
             ...(customInstructions
@@ -310,7 +316,7 @@ export const Route = createFileRoute('/api/chat')({
           runId,
           parentRunId,
           resume,
-          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, renderUi],
+          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, renderUi, ...codeMode.tools],
           // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
           modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
           reasoning: effort,

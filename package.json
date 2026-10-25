@@ -25,6 +25,7 @@
     "@tanstack/ai-code-mode": "^1.0.0",
     "@tanstack/ai-durable-stream": "^1.0.0",
     "@tanstack/ai-gemini": "^1.0.0",
+    "@tanstack/ai-isolate-quickjs": "^1.0.0",
     "@tanstack/ai-ollama": "^1.0.0",
     "@tanstack/ai-openai": "^1.0.0",
     "@tanstack/ai-persistence": "^1.0.0",

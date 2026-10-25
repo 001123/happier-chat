@@ -85,6 +85,8 @@ import {
 } from '@/components/ui/trace'
 import { resolveReplyLanguages, useChatSettings } from '@/lib/chat-settings'
 import { defineMessages, useLocale, useMessages } from '@/lib/i18n'
+import { CodeModeCard } from '@/components/code-mode-card'
+import type { CodeModeEvent } from '@/components/code-mode-card'
 import { runnableCodeRenderers } from '@/components/runnable-code-block'
 import { ModeStarter, useChatMode } from '@/components/chat-modes'
 import { readDisplaySettings } from '@/lib/display-settings'
@@ -191,6 +193,7 @@ const copy = defineMessages({
       learn_word: 'Học từ vựng',
       show_quiz: 'Tạo quiz',
       render_ui: 'Dựng giao diện',
+      execute_typescript: 'Chạy code',
     } as Record<string, string>,
     newChat: 'Cuộc trò chuyện',
     utilities: 'Tiện ích',
@@ -249,6 +252,7 @@ const copy = defineMessages({
       learn_word: 'Learn word',
       show_quiz: 'Build quiz',
       render_ui: 'Build interface',
+      execute_typescript: 'Run code',
     } as Record<string, string>,
     newChat: 'New chat',
     utilities: 'Utilities',
@@ -372,6 +376,7 @@ export function ChatView({ threadId }: { threadId: string }) {
   const messagesRef = React.useRef<HTMLDivElement>(null)
   const [printSource, setPrintSource] = React.useState<HTMLElement | null>(null)
   const [progress, setProgress] = React.useState<Record<string, string>>({})
+  const [codeEvents, setCodeEvents] = React.useState<Record<string, Array<CodeModeEvent>>>({})
 
   const chatSettings = useChatSettings()
   const { showThinking, showTools, showSuggestions, effort, customInstructions } = chatSettings
@@ -408,6 +413,13 @@ export function ChatView({ threadId }: { threadId: string }) {
     },
     onCustomEvent: (name, data, { toolCallId }) => {
       if (!toolCallId) return
+      if (name.startsWith('code_mode:')) {
+        setCodeEvents((events) => ({
+          ...events,
+          [toolCallId]: [...(events[toolCallId] ?? []), { name, data: (data ?? {}) as CodeModeEvent['data'] }],
+        }))
+        return
+      }
       if (name === 'word:progress') {
         const { label } = data as { label: string }
         setProgress((p) => ({ ...p, [toolCallId]: label }))
@@ -735,7 +747,16 @@ export function ChatView({ threadId }: { threadId: string }) {
                               <Trace>
                                 {run.flatMap((m) =>
                                   m.parts.map((part) =>
-                                    part.type === 'tool-call' && part.name !== 'react_to_message' ? (
+                                    part.type === 'tool-call' && part.name === 'execute_typescript' ? (
+                                      <CodeModeCard
+                                        key={part.id}
+                                        state={part.state}
+                                        input={part.input}
+                                        arguments={part.arguments}
+                                        output={part.output ?? findResult(m, part.id)}
+                                        events={codeEvents[part.id] ?? []}
+                                      />
+                                    ) : part.type === 'tool-call' && part.name !== 'react_to_message' ? (
                                       <ToolCallRow
                                         key={part.id}
                                         name={part.name}
