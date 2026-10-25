@@ -29,6 +29,8 @@ const SCHEMA = `
     preset text not null,
     anthropic_url text,
     openai_url text,
+    gemini_url text,
+    ollama_url text,
     models_url text,
     api_key_enc text not null,
     models text not null default '[]',
@@ -100,6 +102,10 @@ const SCHEMA = `
 
 /** Columns added after a table first shipped: `create table if not exists` never adds them to an existing table. */
 function migrate(db: DatabaseSync) {
+  const providerColumns = db.prepare('pragma table_info(providers)').all() as Array<{ name: string }>
+  for (const column of ['gemini_url', 'ollama_url']) {
+    if (!providerColumns.some((existing) => existing.name === column)) db.exec(`alter table providers add column ${column} text`)
+  }
   const userColumns = db.prepare('pragma table_info(users)').all() as Array<{ name: string }>
   if (!userColumns.some((column) => column.name === 'role')) {
     db.exec("alter table users add column role text not null default 'user'")

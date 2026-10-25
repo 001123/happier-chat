@@ -2,7 +2,7 @@ import type { Locale } from './i18n'
 import type { CatalogModel } from './model-catalog'
 
 /** Which wire format a model is called with. */
-export type ModelApi = 'anthropic' | 'chat' | 'responses'
+export type ModelApi = 'anthropic' | 'chat' | 'responses' | 'gemini' | 'ollama'
 
 /** `info` comes from the model catalog on read and is never stored with the provider. */
 export type ProviderModel = { id: string; api: ModelApi; enabled: boolean; info?: CatalogModel | null }
@@ -14,6 +14,8 @@ export type ProviderView = {
   preset: PresetId
   anthropicUrl: string | null
   openaiUrl: string | null
+  geminiUrl: string | null
+  ollamaUrl: string | null
   modelsUrl: string | null
   keyHint: string
   models: Array<ProviderModel>
@@ -23,15 +25,19 @@ export const MODEL_API_LABELS: Record<ModelApi, string> = {
   anthropic: 'Anthropic Messages',
   chat: 'OpenAI Chat Completions',
   responses: 'OpenAI Responses',
+  gemini: 'Google Gemini',
+  ollama: 'Ollama',
 }
 
 export const MODEL_API_SHORT_LABELS: Record<ModelApi, string> = {
   anthropic: 'Messages',
   chat: 'Chat',
   responses: 'Responses',
+  gemini: 'Gemini',
+  ollama: 'Ollama',
 }
 
-export type PresetId = 'opencode-go' | 'anthropic' | 'openai' | 'openrouter' | 'custom'
+export type PresetId = 'opencode-go' | 'anthropic' | 'openai' | 'openrouter' | 'gemini' | 'ollama' | 'custom'
 
 export type ProviderPreset = {
   id: PresetId
@@ -39,8 +45,12 @@ export type ProviderPreset = {
   description: Record<Locale, string>
   anthropicUrl: string | null
   openaiUrl: string | null
+  geminiUrl?: string | null
+  ollamaUrl?: string | null
   modelsUrl: string | null
   keyUrl?: string
+  /** A local server such as Ollama accepts calls without a key. */
+  keyOptional?: boolean
   /** The format of a model id, or null for a model this app cannot call. */
   apiFor?: (modelId: string) => ModelApi | null
 }
@@ -100,6 +110,28 @@ export const PRESETS: Array<ProviderPreset> = [
     keyUrl: 'https://openrouter.ai/settings/keys',
   },
   {
+    id: 'gemini',
+    label: { vi: 'Google Gemini', en: 'Google Gemini' },
+    description: { vi: 'API chính thức của Google AI Studio (Gemini).', en: 'Official Google AI Studio (Gemini) API.' },
+    anthropicUrl: null,
+    openaiUrl: null,
+    geminiUrl: 'https://generativelanguage.googleapis.com',
+    modelsUrl: null,
+    keyUrl: 'https://aistudio.google.com/apikey',
+    apiFor: () => 'gemini',
+  },
+  {
+    id: 'ollama',
+    label: { vi: 'Ollama (local)', en: 'Ollama (local)' },
+    description: { vi: 'Model chạy trên máy bạn qua Ollama. Không cần API key.', en: 'Models running on your machine through Ollama. No API key needed.' },
+    anthropicUrl: null,
+    openaiUrl: null,
+    ollamaUrl: 'http://localhost:11434',
+    modelsUrl: null,
+    keyOptional: true,
+    apiFor: () => 'ollama',
+  },
+  {
     id: 'custom',
     label: { vi: 'Tuỳ chỉnh', en: 'Custom' },
     description: { vi: 'Endpoint bất kỳ tương thích Anthropic hoặc OpenAI (LiteLLM, vLLM, LM Studio…).', en: 'Any Anthropic- or OpenAI-compatible endpoint (LiteLLM, vLLM, LM Studio…).' },
@@ -111,6 +143,11 @@ export const PRESETS: Array<ProviderPreset> = [
 
 export function getPreset(id: string): ProviderPreset {
   return PRESETS.find((preset) => preset.id === id) ?? PRESETS[PRESETS.length - 1]!
+}
+
+/** Key of the provider whose model details the catalog files this preset under. */
+export function catalogProviderId(preset: string) {
+  return preset === 'gemini' ? 'google' : preset
 }
 
 /** Best guess of a model's wire format from the preset and the endpoints the provider has. */

@@ -311,6 +311,7 @@ export const Route = createFileRoute('/api/chat')({
           parentRunId,
           resume,
           tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, renderUi],
+          // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
           modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
           reasoning: effort,
           // The default cap of 5 model turns ends research runs (search + several fetch_page calls)

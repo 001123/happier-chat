@@ -1,4 +1,4 @@
-import { PRESETS } from './providers'
+import { catalogProviderId, PRESETS } from './providers'
 
 /** Model details from models.dev, trimmed to the fields this app shows. Prices are USD per 1M tokens. */
 export type CatalogModel = {
@@ -57,7 +57,9 @@ export type SyncPreview =
     }
 
 /** The models.dev provider ids synced until an admin picks others: the presets this app ships. */
-export const DEFAULT_CATALOG_PROVIDERS = PRESETS.map((preset) => preset.id).filter((id) => id !== 'custom')
+export const DEFAULT_CATALOG_PROVIDERS = PRESETS.filter((preset) => preset.id !== 'custom' && preset.id !== 'ollama').map((preset) =>
+  catalogProviderId(preset.id),
+)
 
 export function applyOverride(model: CatalogModel, override: CatalogOverride | null): CatalogModel {
   if (!override) return model

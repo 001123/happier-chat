@@ -50,6 +50,12 @@ const messages = defineMessages({
     anthropicHint: 'Không gồm /v1/messages',
     openaiEndpoint: 'Endpoint OpenAI',
     openaiHint: 'Thường kết thúc bằng /v1',
+    geminiEndpoint: 'Endpoint Gemini',
+    geminiHint: 'Không gồm /v1beta',
+    ollamaEndpoint: 'Địa chỉ Ollama',
+    ollamaHint: 'Mặc định chạy trên máy này, cổng 11434',
+    keyOptionalLabel: 'tuỳ chọn',
+    keyOptionalPlaceholder: 'Không cần với Ollama chạy trên máy bạn',
     modelsUrl: 'URL danh sách model',
     modelsUrlHint: 'Tuỳ chọn, mặc định là <endpoint>/models',
     editEndpoint: 'Sửa endpoint',
@@ -88,6 +94,12 @@ const messages = defineMessages({
     anthropicHint: 'Without /v1/messages',
     openaiEndpoint: 'OpenAI endpoint',
     openaiHint: 'Usually ends with /v1',
+    geminiEndpoint: 'Gemini endpoint',
+    geminiHint: 'Without /v1beta',
+    ollamaEndpoint: 'Ollama address',
+    ollamaHint: 'Runs on this machine, port 11434, by default',
+    keyOptionalLabel: 'optional',
+    keyOptionalPlaceholder: 'Not needed for Ollama on your own machine',
     modelsUrl: 'Model list URL',
     modelsUrlHint: 'Optional, defaults to <endpoint>/models',
     editEndpoint: 'Edit endpoints',
@@ -171,7 +183,8 @@ function ProvidersPage() {
                         <Badge variant="secondary">{getPreset(provider.preset).label[locale]}</Badge>
                       </div>
                       <p className="mt-0.5 text-sm text-muted-foreground">
-                        <span className="font-mono">{provider.keyHint}</span> · {t.enabledCount(enabled)}
+                        {provider.keyHint && <span className="font-mono">{provider.keyHint} · </span>}
+                        {t.enabledCount(enabled)}
                       </p>
                     </div>
                     <Button
@@ -260,9 +273,11 @@ function ProviderForm({
     .refine((value) => !value || /^https?:\/\//.test(value), { error: t.urlScheme })
   const schema = z.object({
     name: z.string().trim().min(1, { error: t.nameRequired }).max(60),
-    apiKey: provider ? z.string() : z.string().trim().min(1, { error: t.keyRequired }),
+    apiKey: provider || preset.keyOptional ? z.string() : z.string().trim().min(1, { error: t.keyRequired }),
     anthropicUrl: optionalUrl,
     openaiUrl: optionalUrl,
+    geminiUrl: optionalUrl,
+    ollamaUrl: optionalUrl,
     modelsUrl: optionalUrl,
   })
   const save = useSaveProvider()
@@ -272,6 +287,8 @@ function ProviderForm({
       apiKey: '',
       anthropicUrl: provider?.anthropicUrl ?? preset.anthropicUrl ?? '',
       openaiUrl: provider?.openaiUrl ?? preset.openaiUrl ?? '',
+      geminiUrl: provider?.geminiUrl ?? preset.geminiUrl ?? '',
+      ollamaUrl: provider?.ollamaUrl ?? preset.ollamaUrl ?? '',
       modelsUrl: provider?.modelsUrl ?? preset.modelsUrl ?? '',
     },
     validators: { onSubmit: schema },
@@ -283,6 +300,8 @@ function ProviderForm({
         preset: preset.id,
         anthropicUrl: value.anthropicUrl.trim() || null,
         openaiUrl: value.openaiUrl.trim() || null,
+        geminiUrl: value.geminiUrl.trim() || null,
+        ollamaUrl: value.ollamaUrl.trim() || null,
         modelsUrl: value.modelsUrl.trim() || null,
         apiKey: value.apiKey.trim() || undefined,
         models: models.map(({ id, api, enabled }) => ({ id, api, enabled })),
@@ -290,25 +309,32 @@ function ProviderForm({
       if (saved) onDone()
     },
   })
-  const { apiKey, anthropicUrl, openaiUrl, modelsUrl } = useStore(form.store, (state) => state.values)
+  const { apiKey, anthropicUrl, openaiUrl, geminiUrl, ollamaUrl, modelsUrl } = useStore(form.store, (state) => state.values)
   const [models, setModels] = React.useState<Array<ProviderModel>>(provider?.models ?? [])
   const [manualId, setManualId] = React.useState('')
   const [tests, setTests] = React.useState<Record<string, TestState>>({})
   const [loadingModels, setLoadingModels] = React.useState(false)
   const [error, setError] = React.useState('')
-  const [showAdvanced, setShowAdvanced] = React.useState(preset.id === 'custom')
+  const [showAdvanced, setShowAdvanced] = React.useState(preset.id === 'custom' || preset.id === 'ollama')
 
   const urls = { anthropicUrl: anthropicUrl.trim() || null, openaiUrl: openaiUrl.trim() || null }
+  const nativeUrls = { geminiUrl: geminiUrl.trim() || null, ollamaUrl: ollamaUrl.trim() || null }
   const endpoints = {
     providerId: provider?.id,
     ...urls,
+    ...nativeUrls,
     modelsUrl: modelsUrl.trim() || null,
     apiKey: apiKey.trim() || undefined,
   }
-  const apis = (Object.keys(MODEL_API_LABELS) as Array<ModelApi>).filter((api) =>
-    api === 'anthropic' ? urls.anthropicUrl : urls.openaiUrl,
-  )
-  const canReach = Boolean(apiKey.trim() || provider) && apis.length > 0
+  const endpointFor: Record<ModelApi, string | null> = {
+    anthropic: urls.anthropicUrl,
+    chat: urls.openaiUrl,
+    responses: urls.openaiUrl,
+    gemini: nativeUrls.geminiUrl,
+    ollama: nativeUrls.ollamaUrl,
+  }
+  const apis = (Object.keys(MODEL_API_LABELS) as Array<ModelApi>).filter((api) => endpointFor[api])
+  const canReach = Boolean(apiKey.trim() || provider || preset.keyOptional) && apis.length > 0
 
   /** Adds new ids and fills in catalog details for known ones that have none yet. */
   function addModels(entries: Array<{ id: string; info: CatalogModel | null }>, enabled: boolean) {
@@ -354,7 +380,7 @@ function ProviderForm({
 
   // Load the model list as soon as there is a key to try: debounced while typing, and again when the
   // key or an endpoint changes. A saved provider that already has models is not reloaded on open.
-  const autoLoadKey = canReach ? [apiKey.trim(), anthropicUrl, openaiUrl, modelsUrl].join('|') : null
+  const autoLoadKey = canReach ? [apiKey.trim(), anthropicUrl, openaiUrl, geminiUrl, ollamaUrl, modelsUrl].join('|') : null
   const [debouncedLoadKey] = useDebouncedValue(autoLoadKey, { wait: 600 })
   const autoLoaded = React.useRef(provider && provider.models.length > 0 ? autoLoadKey : null)
   React.useEffect(() => {
@@ -417,7 +443,10 @@ function ProviderForm({
           {(field) => (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="provider-key">API key</Label>
+                <Label htmlFor="provider-key">
+                  API key
+                  {preset.keyOptional && <span className="font-normal text-muted-foreground"> · {t.keyOptionalLabel}</span>}
+                </Label>
                 {preset.keyUrl && (
                   <a
                     href={preset.keyUrl}
@@ -436,8 +465,10 @@ function ProviderForm({
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                placeholder={provider ? t.keyInUse(provider.keyHint) : t.keyPlaceholder}
-                required={!provider}
+                placeholder={
+                  provider?.keyHint ? t.keyInUse(provider.keyHint) : preset.keyOptional ? t.keyOptionalPlaceholder : t.keyPlaceholder
+                }
+                required={!provider && !preset.keyOptional}
                 aria-invalid={field.state.meta.errors.length > 0}
               />
               <FieldError errors={field.state.meta.errors} />
@@ -447,47 +478,83 @@ function ProviderForm({
 
         {showAdvanced ? (
           <>
-            <form.Field name="anthropicUrl">
-              {(field) => (
-                <UrlField
-                  id="anthropic-url"
-                  label={t.anthropicEndpoint}
-                  hint={t.anthropicHint}
-                  value={field.state.value}
-                  onChange={field.handleChange}
-                  onBlur={field.handleBlur}
-                  errors={field.state.meta.errors}
-                  placeholder="https://api.anthropic.com"
-                />
-              )}
-            </form.Field>
-            <form.Field name="openaiUrl">
-              {(field) => (
-                <UrlField
-                  id="openai-url"
-                  label={t.openaiEndpoint}
-                  hint={t.openaiHint}
-                  value={field.state.value}
-                  onChange={field.handleChange}
-                  onBlur={field.handleBlur}
-                  errors={field.state.meta.errors}
-                  placeholder="https://api.example.com/v1"
-                />
-              )}
-            </form.Field>
-            <form.Field name="modelsUrl">
-              {(field) => (
-                <UrlField
-                  id="models-url"
-                  label={t.modelsUrl}
-                  hint={t.modelsUrlHint}
-                  value={field.state.value}
-                  onChange={field.handleChange}
-                  onBlur={field.handleBlur}
-                  errors={field.state.meta.errors}
-                />
-              )}
-            </form.Field>
+            {preset.geminiUrl && (
+              <form.Field name="geminiUrl">
+                {(field) => (
+                  <UrlField
+                    id="gemini-url"
+                    label={t.geminiEndpoint}
+                    hint={t.geminiHint}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    errors={field.state.meta.errors}
+                    placeholder="https://generativelanguage.googleapis.com"
+                  />
+                )}
+              </form.Field>
+            )}
+            {preset.ollamaUrl && (
+              <form.Field name="ollamaUrl">
+                {(field) => (
+                  <UrlField
+                    id="ollama-url"
+                    label={t.ollamaEndpoint}
+                    hint={t.ollamaHint}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    errors={field.state.meta.errors}
+                    placeholder="http://localhost:11434"
+                  />
+                )}
+              </form.Field>
+            )}
+            {!preset.geminiUrl && !preset.ollamaUrl && (
+              <>
+              <form.Field name="anthropicUrl">
+                {(field) => (
+                  <UrlField
+                    id="anthropic-url"
+                    label={t.anthropicEndpoint}
+                    hint={t.anthropicHint}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    errors={field.state.meta.errors}
+                    placeholder="https://api.anthropic.com"
+                  />
+                )}
+              </form.Field>
+              <form.Field name="openaiUrl">
+                {(field) => (
+                  <UrlField
+                    id="openai-url"
+                    label={t.openaiEndpoint}
+                    hint={t.openaiHint}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    errors={field.state.meta.errors}
+                    placeholder="https://api.example.com/v1"
+                  />
+                )}
+              </form.Field>
+              <form.Field name="modelsUrl">
+                {(field) => (
+                  <UrlField
+                    id="models-url"
+                    label={t.modelsUrl}
+                    hint={t.modelsUrlHint}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    onBlur={field.handleBlur}
+                    errors={field.state.meta.errors}
+                  />
+                )}
+              </form.Field>
+              </>
+            )}
           </>
         ) : (
           <button
