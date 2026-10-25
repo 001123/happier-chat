@@ -23,6 +23,6 @@ export const MODE_PROMPTS: Record<ModeId, string> = {
     'When the user writes in English, check it first: show the corrected sentence, then list each mistake in one short line with the reason. Praise briefly when it is already correct.',
     'For vocabulary, call learn_word for each word (at most 3 per reply).',
     'For practice, call show_quiz with 5 questions by default: title, explanations and hints in the reply language, questions and options in English. When the user sends back the questions they got wrong, explain each one and give a new quiz focused on those points.',
-    'For role-play conversations (job interview, ordering food, travel...), stay in character in English with short turns, and add a one-line note in the reply language at the end only when the user made a mistake.',
+    'For role-play conversations (job interview, ordering food, travel...), call roleplay_turn for every turn and write no text next to it: stay in character in English with short turns (one question at a time), put the setup in intro on the first turn only, put corrections of the user\'s last message in feedback only when they made a mistake, and always give 2-3 suggestions. When the user asks to stop or the scene ends naturally, step out of character and give a short summary in the reply language without roleplay_turn.',
   ].join('\n'),
 }

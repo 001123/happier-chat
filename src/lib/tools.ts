@@ -195,3 +195,42 @@ export const showQuizDef = toolDefinition({
   inputSchema: quizInputSchema,
   outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()) }),
 })
+
+export const roleplayInputSchema = z.object({
+  scenario: z.string().meta({ description: 'Short scenario name in the reply language, e.g. "Phỏng vấn xin việc"' }),
+  intro: z
+    .string()
+    .optional()
+    .meta({ description: 'First turn only: 1-2 sentences in the reply language explaining the setup and how feedback works. Omit on later turns.' }),
+  character: z.object({
+    name: z.string().meta({ description: 'Character name or title, e.g. "Sarah" or "Interviewer"' }),
+    role: z.string().meta({ description: 'Short role in English, e.g. "HR Manager at Acme"' }),
+    voice: z.enum(['female', 'male']).meta({ description: 'Voice used to read the line aloud' }),
+  }),
+  line: z.string().meta({ description: 'What the character says this turn, in English, plain text, 1-3 short sentences' }),
+  feedback: z
+    .array(
+      z.object({
+        original: z.string().meta({ description: "The user's phrase exactly as they wrote it" }),
+        corrected: z.string().meta({ description: 'The natural, correct English version' }),
+        note: z.string().meta({ description: 'One short reason, in the reply language' }),
+      }),
+    )
+    .max(3)
+    .optional()
+    .meta({ description: "Corrections for the user's previous message; omit when it was already correct." }),
+  suggestions: z
+    .array(z.string())
+    .min(2)
+    .max(3)
+    .meta({ description: '2-3 sample English replies the user could give, varied in level' }),
+})
+export type RoleplayInput = z.infer<typeof roleplayInputSchema>
+
+export const roleplayTurnDef = toolDefinition({
+  name: 'roleplay_turn',
+  description:
+    "Display one turn of an English role-play conversation (job interview, ordering food, travel...) as a character card: the character's line with a listen button, corrections for the user's previous message, and sample replies the user can reveal. Call it once per turn for the whole role-play. The card is the reply, so do not write any text next to it.",
+  inputSchema: roleplayInputSchema,
+  outputSchema: z.object({ shown: z.boolean() }),
+})

@@ -106,14 +106,16 @@ import {
   learnWordDef,
   reactionEmojis,
   reactToMessageDef,
+  roleplayTurnDef,
   sendEmailDef,
   setThemeDef,
   showMapDef,
   showQuizDef,
   webSearchDef,
 } from '@/lib/tools'
-import type { QuizInput } from '@/lib/tools'
+import type { QuizInput, RoleplayInput } from '@/lib/tools'
 import { QuizCard, QuizCardSkeleton } from '@/components/quiz-card'
+import { ROLEPLAY_VOICES, RoleplayCard, RoleplayCardSkeleton } from '@/components/roleplay-card'
 import { renderUiDef, splitInlinePatches } from '@/lib/generative-ui'
 
 const tools = clientTools(
@@ -129,6 +131,7 @@ const tools = clientTools(
   showMapDef,
   learnWordDef,
   showQuizDef,
+  roleplayTurnDef,
   renderUiDef,
 )
 
@@ -194,6 +197,7 @@ const copy = defineMessages({
       show_map: 'Xem bản đồ',
       learn_word: 'Học từ vựng',
       show_quiz: 'Tạo quiz',
+      roleplay_turn: 'Nhập vai',
       render_ui: 'Dựng giao diện',
       execute_typescript: 'Chạy code',
     } as Record<string, string>,
@@ -253,6 +257,7 @@ const copy = defineMessages({
       show_map: 'Show map',
       learn_word: 'Learn word',
       show_quiz: 'Build quiz',
+      roleplay_turn: 'Role-play',
       render_ui: 'Build interface',
       execute_typescript: 'Run code',
     } as Record<string, string>,
@@ -488,6 +493,12 @@ export function ChatView({ threadId }: { threadId: string }) {
     wasLoading.current = isLoading
     const last = messages.at(-1)
     if (!finished || !autoRead || error || last?.role !== 'assistant') return
+    const turn = last.parts.find((p) => p.type === 'tool-call' && p.name === 'roleplay_turn')
+    const roleplay = turn?.type === 'tool-call' ? (turn.input as RoleplayInput | undefined) : undefined
+    if (roleplay?.line) {
+      speaker.speak(`${turn!.id}:line`, roleplay.line, { voice: ROLEPLAY_VOICES[roleplay.character.voice], pitch: 0 })
+      return
+    }
     speaker.speak(last.id, speechContent(last))
   }, [isLoading, autoRead, error, messages, speaker.speak])
 
@@ -844,6 +855,21 @@ export function ChatView({ threadId }: { threadId: string }) {
                                   id={part.id}
                                   input={part.input as QuizInput}
                                   onAsk={(content) => void sendMessage(content)}
+                                />
+                              )
+                            })}
+                            {message.parts.map((part) => {
+                              if (part.type !== 'tool-call' || part.name !== 'roleplay_turn') return null
+                              const input = part.input ?? (part.arguments ? parsePartialJSON(part.arguments) : undefined)
+                              if (!input?.character) return part.state === 'error' ? null : <RoleplayCardSkeleton key={part.id} />
+                              return (
+                                <RoleplayCard
+                                  key={part.id}
+                                  id={part.id}
+                                  input={input as Partial<RoleplayInput>}
+                                  active={!isLoading && message === messages.at(-1)}
+                                  speaker={speaker}
+                                  onReply={(content) => void sendMessage(content)}
                                 />
                               )
                             })}

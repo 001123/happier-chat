@@ -21,6 +21,7 @@ import {
   sendEmailDef,
   setThemeDef,
   showMapDef,
+  roleplayTurnDef,
   showQuizDef,
   weatherConditions,
   webSearchDef,
@@ -150,6 +151,8 @@ const showQuiz = showQuizDef.server(async ({ questions }) => {
   return { shown: issues.length === 0, issues }
 })
 
+const roleplayTurn = roleplayTurnDef.server(async () => ({ shown: true }))
+
 const sendEmail = sendEmailDef.server(async () => {
   await sleep(300)
   return { sent: true, messageId: `msg_${Date.now().toString(36)}` }
@@ -208,7 +211,7 @@ const finalStep: ChatMiddleware = {
   },
 }
 
-const UI_ONLY_TOOLS = new Set(['render_ui', 'show_quiz', 'react_to_message'])
+const UI_ONLY_TOOLS = new Set(['render_ui', 'show_quiz', 'roleplay_turn', 'react_to_message'])
 
 /**
  * A displayed UI or quiz is the reply. Without this, the model gets another turn after the card renders
@@ -316,7 +319,7 @@ export const Route = createFileRoute('/api/chat')({
           runId,
           parentRunId,
           resume,
-          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, renderUi, ...codeMode.tools],
+          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, renderUi, ...codeMode.tools],
           // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
           modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
           reasoning: effort,
