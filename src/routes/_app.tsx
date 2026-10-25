@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
+import { HotkeysProvider } from '@tanstack/react-hotkeys'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 
@@ -55,13 +56,15 @@ function AppLayout() {
   }, [])
 
   return (
-    <SidebarProvider defaultOpen={sidebarOpen}>
-      <AppSidebar />
-      {/* min-w-0 lets wide tables scroll inside their box instead of widening the page. */}
-      <SidebarInset className="min-w-0">
-        <Outlet />
-      </SidebarInset>
-      <ProviderOnboardingDialog />
-    </SidebarProvider>
+    <HotkeysProvider>
+      <SidebarProvider defaultOpen={sidebarOpen}>
+        <AppSidebar />
+        {/* min-w-0 lets wide tables scroll inside their box instead of widening the page. */}
+        <SidebarInset className="min-w-0">
+          <Outlet />
+        </SidebarInset>
+        <ProviderOnboardingDialog />
+      </SidebarProvider>
+    </HotkeysProvider>
   )
 }

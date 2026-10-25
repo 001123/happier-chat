@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Menu } from '@base-ui/react/menu'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { cn } from 'cn'
 import {
   IconArchive,
@@ -24,6 +25,7 @@ import {
 } from '@tabler/icons-react'
 
 import { Logo } from '@/components/logo'
+import { SHORTCUTS, useShortcutLabel, withShortcut } from '@/lib/shortcuts'
 import { VirtualMenuItems } from '@/components/virtual-menu-items'
 import type { RowProps } from '@/components/virtual-menu-items'
 import { ProjectInstructionsDialog } from '@/components/project-instructions-dialog'
@@ -467,7 +469,7 @@ export function AppSidebar() {
     exitSelecting()
   }
 
-  const { isMobile, setOpenMobile } = useSidebar()
+  const { isMobile, setOpenMobile, setOpen } = useSidebar()
   // Any navigation from the sidebar should reveal the page on mobile.
   React.useEffect(() => {
     if (isMobile) setOpenMobile(false)
@@ -484,6 +486,24 @@ export function AppSidebar() {
     }
     void navigate({ to: '/' })
   }
+
+  const searchRef = React.useRef<HTMLInputElement>(null)
+  useHotkey(SHORTCUTS.newChat, newChat, { meta: { name: 'New chat' } })
+  useHotkey(
+    SHORTCUTS.searchThreads,
+    () => {
+      // The search box is not rendered while the sidebar is collapsed to icons.
+      if (isMobile) setOpenMobile(true)
+      else setOpen(true)
+      requestAnimationFrame(() => {
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      })
+    },
+    { meta: { name: 'Search conversations' } },
+  )
+  const newChatShortcut = useShortcutLabel(SHORTCUTS.newChat)
+  const searchShortcut = useShortcutLabel(SHORTCUTS.searchThreads)
 
   const newChatIn = (projectId: string) => {
     setProjectCollapsed(projectId, false)
@@ -656,7 +676,7 @@ export function AppSidebar() {
                   }}
                 />
               }
-              tooltip={t.newChat}
+              tooltip={withShortcut(t.newChat, newChatShortcut)}
             >
               <ComposeIcon className="text-primary" />
               <span className="font-medium">{t.newChat}</span>
@@ -666,6 +686,7 @@ export function AppSidebar() {
         <div className="relative group-data-[collapsible=icon]:hidden">
           <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50" />
           <input
+            ref={searchRef}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -674,6 +695,7 @@ export function AppSidebar() {
             }}
             placeholder={t.searchPlaceholder}
             aria-label={t.searchLabel}
+            title={withShortcut(t.searchLabel, searchShortcut)}
             className="h-8 w-full rounded-md border border-sidebar-border bg-background/60 pr-7 pl-8 text-sm outline-hidden placeholder:text-sidebar-foreground/50 focus-visible:ring-2 focus-visible:ring-sidebar-ring [&::-webkit-search-cancel-button]:hidden"
           />
           {query && (

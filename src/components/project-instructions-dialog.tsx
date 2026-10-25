@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useForm } from '@tanstack/react-form'
+import { matchesKeyboardEvent } from '@tanstack/react-hotkeys'
 import { IconScript } from '@tabler/icons-react'
 import { z } from 'zod'
 
@@ -78,7 +79,7 @@ export function ProjectInstructionsDialog({
                 onBlur={field.handleBlur}
                 onChange={(event) => field.handleChange(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) save()
+                  if (matchesKeyboardEvent(event.nativeEvent, 'Mod+Enter')) save()
                 }}
                 maxLength={CUSTOM_INSTRUCTIONS_MAX}
                 placeholder={t.placeholder}

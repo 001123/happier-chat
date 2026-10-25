@@ -2,6 +2,7 @@ import * as React from 'react'
 import { startTransition, ViewTransition } from 'react'
 import { clientTools, fetchServerSentEvents, parsePartialJSON, useChat } from '@tanstack/ai-react'
 import type { UIMessage } from '@tanstack/ai-react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { Popover } from '@base-ui/react/popover'
@@ -96,6 +97,7 @@ import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
 import type { SpeakerStatus } from '@/lib/use-speaker'
 import { toggleReaction, useReactions } from '@/lib/reactions'
 import { hasThread, setThreadBusy, upsertThread, usePendingProject, useThread, useThreadsSynced } from '@/lib/threads'
+import { SHORTCUTS } from '@/lib/shortcuts'
 import { clearThread } from '@/server/threads.functions'
 import { useProjects } from '@/lib/projects'
 import {
@@ -507,6 +509,24 @@ export function ChatView({ threadId }: { threadId: string }) {
     failed: Boolean(error),
     enabled: showSuggestions,
   })
+
+  useHotkey(
+    'Escape',
+    () => {
+      // Esc also closes menus and dialogs; leave the key to them when one is open.
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return
+      stopRun()
+    },
+    {
+      enabled: isLoading || interrupts.length > 0,
+      preventDefault: false,
+      stopPropagation: false,
+      meta: { name: 'Stop generating' },
+    },
+  )
+  const focusComposer = () => document.querySelector<HTMLTextAreaElement>('textarea[data-composer]')?.focus()
+  useHotkey(SHORTCUTS.focusComposer, focusComposer, { meta: { name: 'Focus message box' } })
+  useHotkey(SHORTCUTS.focusComposerAlt, focusComposer, { meta: { name: 'Focus message box' } })
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   async function editMessage(index: number, text: string) {

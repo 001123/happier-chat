@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { matchesKeyboardEvent } from '@tanstack/react-hotkeys'
 import { IconArrowBackUp, IconCheck, IconLoader2, IconPencil, IconPlayerPlay, IconX } from '@tabler/icons-react'
 import {
   CodeBlock,
@@ -87,7 +88,7 @@ function RunnableCodeBlock({ code, language, isIncomplete, runner }: CustomRende
 
   const onEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const editor = event.currentTarget
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (matchesKeyboardEvent(event.nativeEvent, 'Mod+Enter')) {
       event.preventDefault()
       void run()
     } else if (event.key === 'Escape') {

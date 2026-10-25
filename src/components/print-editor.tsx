@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
+import { useHotkey, useKeyHold } from '@tanstack/react-hotkeys'
 import { cn } from 'cn'
 import { IconArrowBackUp, IconEraser, IconPencil, IconPrinter, IconRotate, IconX } from '@tabler/icons-react'
 
@@ -196,30 +197,15 @@ export function PrintEditor({
 
   const lastPointer = React.useRef<HTMLElement | null>(null)
 
+  useHotkey('Escape', onClose)
+  useHotkey('Mod+Z', undo)
+  useHotkey('Mod+P', print)
+  // Holding Shift widens the erase target to the whole block under the pointer.
+  const shiftHeld = useKeyHold('Shift')
   React.useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Shift') {
-        shift.current = event.type === 'keydown'
-        highlight(lastPointer.current)
-      }
-      if (event.type !== 'keydown') return
-      if (event.key === 'Escape') onClose()
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
-        event.preventDefault()
-        undo()
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'p') {
-        event.preventDefault()
-        print()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('keyup', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onKey)
-    }
-  })
+    shift.current = shiftHeld
+    highlight(lastPointer.current)
+  }, [shiftHeld])
 
   React.useEffect(() => {
     if (mode !== 'erase') clearHover()
