@@ -26,6 +26,7 @@ import type { TablerIcon } from '@tabler/icons-react'
 import { cn } from 'cn'
 
 import { CapabilitiesCell, ColumnLabel, InputCell, pinnedBody, Price, ReleaseCell, WeightsCell } from '@/components/model-info-cells'
+import { useVirtualRows } from '@/hooks/use-virtual-rows'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -281,6 +282,8 @@ export function ProviderModelTable({
     initialState: { sorting: [{ id: 'release', desc: true }] },
   })
   const rows = table.getRowModel().rows
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const virtualRows = useVirtualRows({ count: rows.length, scrollRef })
 
   return (
     <RowActionsContext value={{ apis, tests, canTest, onEnable, onApiChange, onTest }}>
@@ -365,7 +368,7 @@ export function ProviderModelTable({
         </div>
 
         {/* A plain scroll box instead of <Table>, whose own overflow wrapper would unstick the header. */}
-        <div className="max-h-[32rem] overflow-auto rounded-xl border bg-card">
+        <div ref={scrollRef} className="max-h-[32rem] overflow-auto rounded-xl border bg-card">
           <table className="w-full caption-bottom text-sm">
             <TableHeader className="[&_tr]:border-b-0">
               {table.getHeaderGroups().map((group) => (
@@ -418,31 +421,40 @@ export function ProviderModelTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.original.enabled ? 'selected' : undefined}
-                    className="group/row cursor-pointer"
-                    onClick={(event) => {
-                      // Clicking anywhere on the row toggles it, except on its own controls.
-                      if ((event.target as HTMLElement).closest('button, [role="checkbox"], [role="combobox"], a, input')) return
-                      onEnable([row.original.id], !row.original.enabled)
-                    }}
-                  >
-                    {row.getAllCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        className={cn(
-                          columnClass(cell.column.id),
-                          NUMERIC_COLUMNS.has(cell.column.id) && 'tabular-nums',
-                          PINNED[cell.column.id] && cn(PINNED[cell.column.id], pinnedBody),
-                        )}
-                      >
-                        <table.FlexRender cell={cell} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
+                <>
+                  <SpacerRow height={virtualRows.paddingTop} />
+                  {virtualRows.items.map((item) => {
+                    const row = rows[item.index]
+                    return (
+                    <TableRow
+                      key={row.id}
+                      data-index={item.index}
+                      ref={virtualRows.measureElement}
+                      data-state={row.original.enabled ? 'selected' : undefined}
+                      className="group/row cursor-pointer"
+                      onClick={(event) => {
+                        // Clicking anywhere on the row toggles it, except on its own controls.
+                        if ((event.target as HTMLElement).closest('button, [role="checkbox"], [role="combobox"], a, input')) return
+                        onEnable([row.original.id], !row.original.enabled)
+                      }}
+                    >
+                      {row.getAllCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          className={cn(
+                            columnClass(cell.column.id),
+                            NUMERIC_COLUMNS.has(cell.column.id) && 'tabular-nums',
+                            PINNED[cell.column.id] && cn(PINNED[cell.column.id], pinnedBody),
+                          )}
+                        >
+                          <table.FlexRender cell={cell} />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    )
+                  })}
+                  <SpacerRow height={virtualRows.paddingBottom} />
+                </>
               )}
             </TableBody>
           </table>
@@ -450,6 +462,14 @@ export function ProviderModelTable({
       </div>
     </RowActionsContext>
   )
+}
+
+function SpacerRow({ height }: { height: number }) {
+  return height > 0 ? (
+    <tr aria-hidden>
+      <td style={{ height, padding: 0 }} />
+    </tr>
+  ) : null
 }
 
 function EnabledCell({ model }: { model: ProviderModel }) {

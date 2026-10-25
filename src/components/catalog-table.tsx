@@ -3,12 +3,10 @@ import {
   columnFilteringFeature,
   createColumnHelper,
   createFilteredRowModel,
-  createPaginatedRowModel,
   createSortedRowModel,
   filterFn_equals,
   filterFn_includesString,
   globalFilteringFeature,
-  rowPaginationFeature,
   rowSortingFeature,
   sortFn_alphanumeric,
   sortFn_text,
@@ -19,17 +17,16 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconArrowsSort,
-  IconChevronLeft,
-  IconChevronRight,
   IconPencil,
 } from '@tabler/icons-react'
 
 import { CapabilitiesCell, ColumnLabel, InputCell, pinnedBody, Price, ReleaseCell, WeightsCell } from '@/components/model-info-cells'
+import { useVirtualRows } from '@/hooks/use-virtual-rows'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { applyOverride, formatTokens } from '@/lib/model-catalog'
 import type { AdminCatalogRow, CatalogModel } from '@/lib/model-catalog'
 import { cn } from '@/lib/utils'
@@ -43,9 +40,6 @@ const messages = defineMessages({
     searchPlaceholder: 'Tìm model…',
     empty: 'Chưa có dữ liệu. Bấm “Kiểm tra cập nhật” để tải từ models.dev.',
     noMatch: 'Không có model nào khớp.',
-    page: (page: number, total: number) => `Trang ${page} / ${total}`,
-    prevPage: 'Trang trước',
-    nextPage: 'Trang sau',
   },
   en: {
     edited: 'Edited',
@@ -54,9 +48,6 @@ const messages = defineMessages({
     searchPlaceholder: 'Search models…',
     empty: 'No data yet. Click “Check for updates” to load from models.dev.',
     noMatch: 'No matching models.',
-    page: (page: number, total: number) => `Page ${page} / ${total}`,
-    prevPage: 'Previous page',
-    nextPage: 'Next page',
   },
 })
 
@@ -85,10 +76,8 @@ const features = tableFeatures({
   columnFilteringFeature,
   globalFilteringFeature,
   rowSortingFeature,
-  rowPaginationFeature,
   filteredRowModel: createFilteredRowModel(),
   sortedRowModel: createSortedRowModel(),
-  paginatedRowModel: createPaginatedRowModel(),
   filterFns: { equals: filterFn_equals, includesString: filterFn_includesString },
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
 })
@@ -218,6 +207,14 @@ function toRow(source: AdminCatalogRow): Row {
 
 const ALL = '__all__'
 
+function SpacerRow({ height }: { height: number }) {
+  return height > 0 ? (
+    <tr aria-hidden>
+      <td style={{ height, padding: 0 }} />
+    </tr>
+  ) : null
+}
+
 export function CatalogTable({
   rows,
   providers,
@@ -237,14 +234,16 @@ export function CatalogTable({
     globalFilterFn: 'includesString',
     // Search matches the model name or id; the id lives in the name column's cell, not its own column.
     getColumnCanGlobalFilter: (column) => column.id === 'name' || column.id === 'providerId',
-    initialState: { pagination: { pageIndex: 0, pageSize: 50 }, sorting: [] },
+    initialState: { sorting: [] },
   })
 
   const providerColumn = table.getColumn('providerId')
   const providerFilter = (providerColumn?.getFilterValue() as string | undefined) ?? ALL
   const providerItems = { [ALL]: t.allProviders, ...Object.fromEntries(providers.map((id) => [id, id])) }
   const filteredCount = table.getFilteredRowModel().rows.length
-  const { pageIndex } = table.state.pagination
+  const tableRows = table.getRowModel().rows
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const virtualRows = useVirtualRows({ count: tableRows.length, scrollRef })
 
   return (
     <EditContext value={onEdit}>
@@ -275,17 +274,23 @@ export function CatalogTable({
           <span className="text-sm text-muted-foreground tabular-nums">{filteredCount} model</span>
         </div>
 
-        <div className="overflow-hidden rounded-xl border bg-card">
-          <Table>
-            <TableHeader>
+        {/* A plain scroll box instead of <Table>, whose own overflow wrapper would unstick the header. */}
+        <div ref={scrollRef} className="max-h-[36rem] overflow-auto rounded-xl border bg-card">
+          <table className="w-full caption-bottom text-sm">
+            <TableHeader className="[&_tr]:border-b-0">
               {table.getHeaderGroups().map((group) => (
-                <TableRow key={group.id}>
+                <TableRow key={group.id} className="hover:bg-transparent">
                   {group.headers.map((header) => {
                     const sorted = header.column.getIsSorted()
                     return (
                       <TableHead
                         key={header.id}
-                        className={cn(columnClass(header.column.id), PINNED[header.column.id] && cn(PINNED[header.column.id], 'z-10 bg-card'))}
+                        className={cn(
+                          columnClass(header.column.id),
+                          'sticky top-0 z-10 bg-card shadow-[inset_0_-1px_0_var(--color-border)]',
+                          PINNED[header.column.id],
+                          PINNED[header.column.id] && 'z-20',
+                        )}
                       >
                         {header.column.getCanSort() ? (
                           <button
@@ -312,7 +317,7 @@ export function CatalogTable({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows.length === 0 ? (
+              {tableRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="py-8 text-center text-muted-foreground">
                     {rows.length === 0
@@ -321,52 +326,33 @@ export function CatalogTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} className="group/row">
-                    {row.getAllCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        className={cn(
-                          columnClass(cell.column.id),
-                          NUMERIC_COLUMNS.has(cell.column.id) && 'tabular-nums',
-                          PINNED[cell.column.id] && cn(PINNED[cell.column.id], pinnedBody),
-                        )}
-                      >
-                        <table.FlexRender cell={cell} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
+                <>
+                  <SpacerRow height={virtualRows.paddingTop} />
+                  {virtualRows.items.map((item) => {
+                    const row = tableRows[item.index]
+                    return (
+                      <TableRow key={row.id} data-index={item.index} ref={virtualRows.measureElement} className="group/row">
+                        {row.getAllCells().map((cell) => (
+                          <TableCell
+                            key={cell.id}
+                            className={cn(
+                              columnClass(cell.column.id),
+                              NUMERIC_COLUMNS.has(cell.column.id) && 'tabular-nums',
+                              PINNED[cell.column.id] && cn(PINNED[cell.column.id], pinnedBody),
+                            )}
+                          >
+                            <table.FlexRender cell={cell} />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    )
+                  })}
+                  <SpacerRow height={virtualRows.paddingBottom} />
+                </>
               )}
             </TableBody>
-          </Table>
+          </table>
         </div>
-
-        {table.getPageCount() > 1 && (
-          <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
-            <span>
-              {t.page(pageIndex + 1, table.getPageCount())}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t.prevPage}
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <IconChevronLeft />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t.nextPage}
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              <IconChevronRight />
-            </Button>
-          </div>
-        )}
       </div>
     </EditContext>
   )

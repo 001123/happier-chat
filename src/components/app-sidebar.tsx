@@ -24,6 +24,8 @@ import {
 } from '@tabler/icons-react'
 
 import { Logo } from '@/components/logo'
+import { VirtualMenuItems } from '@/components/virtual-menu-items'
+import type { RowProps } from '@/components/virtual-menu-items'
 import { ProjectInstructionsDialog } from '@/components/project-instructions-dialog'
 import { UserMenu } from '@/components/user-menu'
 import {
@@ -536,11 +538,12 @@ export function AppSidebar() {
     </div>
   )
 
-  const renderThread = (thread: Thread, scope: string) => {
+  const renderThread = (thread: Thread, scope: string, rowProps?: RowProps) => {
     const checkable = activeScope === scope
     return (
       <SidebarMenuItem
         key={thread.id}
+        {...rowProps}
         draggable={!selecting && !thread.archived && renamingThreadId !== thread.id}
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, thread.id)
@@ -922,7 +925,7 @@ export function AppSidebar() {
                       : t.allInProjects}
                 </p>
               )}
-              {ungrouped.map((t) => renderThread(t, RECENTS))}
+              <VirtualMenuItems items={ungrouped} getKey={(t) => t.id} render={(t, rowProps) => renderThread(t, RECENTS, rowProps)} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -973,7 +976,7 @@ export function AppSidebar() {
                       {t.dragToArchive}
                     </p>
                   ) : (
-                    archived.map((t) => renderThread(t, ARCHIVED))
+                    <VirtualMenuItems items={archived} getKey={(t) => t.id} render={(t, rowProps) => renderThread(t, ARCHIVED, rowProps)} />
                   )}
                 </SidebarMenu>
               </SidebarGroupContent>
