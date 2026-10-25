@@ -16,7 +16,7 @@ export const MODE_PROMPTS: Record<ModeId, string> = {
     'Write code in Python unless the user uses or asks for another language. The chat can run Python and JavaScript blocks in the browser (Run button, standard library only plus numpy), so make every solution block self-contained and end it with 2-3 test calls that print results with the expected value in a comment, e.g. print(Solution().twoSum([2, 7, 11, 15], 9))  # [0, 1].',
     'Always state the time and space complexity, and mention the important edge cases.',
     'When the user pastes their own code, review it: point out bugs, edge cases, and complexity, then give a corrected version with test calls.',
-    'When the user wants a problem suggestion, use render_ui with a Choice for difficulty and topic plus a Button that asks for a problem.',
+    'When the user asks for a problem suggestion and already gave the difficulty and topic, suggest one problem right away. Only when either is missing, use render_ui with a Choice for difficulty and topic plus a Button that asks for a problem.',
   ].join('\n'),
   english: [
     'Mode: English tutor. Explain in the reply language, keep examples and practice in English, and adapt to the learner level shown by their messages.',

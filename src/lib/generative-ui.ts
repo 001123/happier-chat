@@ -237,6 +237,7 @@ export function buildSpec(patches: ReadonlyArray<unknown>): Spec | null {
     }
   }
   if (typeof spec.root !== 'string' || !spec.elements) return null
+  bindControls(spec as unknown as Spec)
   return spec as unknown as Spec
 }
 
@@ -249,6 +250,33 @@ const BOUND_PROPS: Record<string, string> = {
   Checkbox: 'checked',
 }
 
+/**
+ * Models often forget $bindState on form controls. Bind each such control to a state path named after its key
+ * (seeded with the literal value, if any) instead of rejecting the spec and costing another model turn.
+ */
+function bindControls(spec: Spec) {
+  for (const [key, element] of Object.entries(spec.elements)) {
+    const prop = BOUND_PROPS[element.type]
+    if (!prop) continue
+    const props = (element.props ?? {}) as Record<string, unknown>
+    const value = props[prop]
+    if (value && typeof value === 'object' && '$bindState' in value) continue
+    const stateKey = key.replace(/[~/]/g, '_')
+    const state = (spec.state ??= {}) as Record<string, unknown>
+    if (value !== undefined && !(stateKey in state)) state[stateKey] = value
+    element.props = { ...props, [prop]: { $bindState: `/${stateKey}` } }
+  }
+}
+
+function readPointer(root: unknown, path: string): unknown {
+  let node = root
+  for (const part of path.split('/').slice(1)) {
+    if (!node || typeof node !== 'object') return undefined
+    node = (node as Record<string, unknown>)[part.replace(/~1/g, '/').replace(/~0/g, '~')]
+  }
+  return node
+}
+
 export function specIssues(spec: Spec | null): Array<string> {
   if (!spec) return ['Spec is missing /root or /elements.']
   const issues = validateSpec(spec).issues.map((i) => i.message)
@@ -258,12 +286,23 @@ export function specIssues(spec: Spec | null): Array<string> {
         issues.push(`elements/${key}: action ask requires params.text, e.g. { "text": { "$template": "..." } }`)
     }
   }
+  const boundPaths = new Set<string>()
+  for (const element of Object.values(spec.elements)) {
+    for (const value of Object.values(element.props ?? {})) {
+      if (value && typeof value === 'object' && '$bindState' in value) boundPaths.add(String(value.$bindState))
+    }
+  }
   for (const [key, element] of Object.entries(spec.elements)) {
-    const prop = BOUND_PROPS[element.type]
-    if (!prop) continue
-    const value = (element.props as Record<string, unknown>)[prop]
-    if (!(value && typeof value === 'object' && '$bindState' in value))
-      issues.push(`elements/${key}: ${element.type}.${prop} must be { "$bindState": "/path" } so the selection is kept and can be sent with ask.`)
+    if (element.type === 'Button' && !element.on?.press)
+      issues.push(`elements/${key}: Button needs on.press (usually the ask action), otherwise pressing it does nothing.`)
+    for (const binding of Object.values(element.on ?? {}).flat()) {
+      const text = binding.params?.text
+      const template = text && typeof text === 'object' && '$template' in text ? String(text.$template) : ''
+      for (const [, path] of template.matchAll(/\$\{(\/[^}]*)\}/g)) {
+        if (!boundPaths.has(path!) && readPointer(spec.state, path!) === undefined)
+          issues.push(`elements/${key}: \${${path}} in the ask template matches no control; bind a control to it with { "$bindState": "${path}" }.`)
+      }
+    }
   }
   for (const [key, element] of Object.entries(spec.elements)) {
     const children = element.children ?? []

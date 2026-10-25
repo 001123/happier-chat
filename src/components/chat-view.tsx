@@ -188,6 +188,7 @@ const copy = defineMessages({
       { text: 'Ăn quả nhớ kẻ trồng cây.' },
       { text: 'Chậm mà chắc.' },
     ] as ReadonlyArray<{ text: string; author?: string }>,
+    rejectedSpec: 'spec lỗi',
     tools: {
       get_weather: 'Tra thời tiết',
       set_theme: 'Đổi giao diện',
@@ -248,6 +249,7 @@ const copy = defineMessages({
       { text: 'Well begun is half done.' },
       { text: 'Slow and steady wins the race.' },
     ] as ReadonlyArray<{ text: string; author?: string }>,
+    rejectedSpec: 'invalid spec',
     tools: {
       get_weather: 'Check weather',
       set_theme: 'Change theme',
@@ -878,6 +880,10 @@ export function ChatView({ threadId }: { threadId: string }) {
                               const input = part.input ?? (part.arguments ? parsePartialJSON(part.arguments) : undefined)
                               const patches = (input as { patches?: unknown } | undefined)?.patches
                               if (!Array.isArray(patches)) return null
+                              // A spec the server rejected is replaced by the model's corrected call.
+                              const uiResult = part.output ?? findResult(message, part.id)
+                              const uiOutput = typeof uiResult === 'string' ? safeJson(uiResult) : uiResult
+                              if (uiOutput?.rendered === false) return null
                               return (
                                 <GenerativeUI
                                   key={part.id}
@@ -1739,8 +1745,12 @@ function ToolCallRow({
   const t = useMessages(copy)
   const running = state !== 'complete' && state !== 'error' && output === undefined
   const failed = state === 'error'
+  // render_ui and show_quiz report a spec the server rejected; the model retries with a corrected call.
+  const result = typeof output === 'string' ? safeJson(output) : output
+  const issues: Array<string> | null =
+    result?.rendered === false || result?.shown === false ? (Array.isArray(result.issues) ? result.issues : []) : null
   const inputText = formatValue(input)
-  const outputText = formatValue(output)
+  const outputText = issues ? null : formatValue(output)
 
   return (
     <TraceCollapsible>
@@ -1751,13 +1761,15 @@ function ToolCallRow({
               <IconCircleX />
             ) : running ? (
               <IconLoader2 className="animate-spin" />
+            ) : issues ? (
+              <IconAlertTriangle />
             ) : (
               <IconTool />
             )}
           </TraceIcon>
           <TraceTitle>{t.tools[name] ?? name}</TraceTitle>
           <TraceDescription className="font-mono text-xs">
-            {running && progress ? progress : state}
+            {running && progress ? progress : issues ? t.rejectedSpec : state}
           </TraceDescription>
         </TraceLine>
       </TraceCollapsibleTrigger>
@@ -1765,6 +1777,13 @@ function ToolCallRow({
         <div className="grid gap-2 font-mono text-xs">
           {inputText && <pre className="whitespace-pre-wrap rounded-md bg-muted p-2">{inputText}</pre>}
           {outputText && <pre className="whitespace-pre-wrap rounded-md bg-muted p-2">→ {outputText}</pre>}
+          {issues && issues.length > 0 && (
+            <ul className="grid gap-1 rounded-md bg-muted p-2">
+              {issues.map((issue) => (
+                <li key={issue}>→ {issue}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </TraceCollapsibleContent>
     </TraceCollapsible>
