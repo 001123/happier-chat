@@ -7,9 +7,8 @@ import { ProviderOnboardingDialog } from '@/components/provider-onboarding'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { claimAccountData } from '@/lib/account-data'
 import { LEFT_SIDEBAR_COOKIE, readDisplaySettings } from '@/lib/display-settings'
-import { InitialProvidersProvider } from '@/lib/provider-store'
+import { providersQueryOptions } from '@/lib/provider-store'
 import { getCurrentUser } from '@/server/auth.functions'
-import { getProviders } from '@/server/providers.functions'
 
 const getSidebarOpen = createIsomorphicFn()
   .server(() => getCookie(LEFT_SIDEBAR_COOKIE) !== 'false')
@@ -26,26 +25,27 @@ export const Route = createFileRoute('/_app')({
     }
     return { user }
   },
-  // Providers ride along with the page so the composer's model picker needs no request after hydration.
-  // Later changes go through the provider store, so the loader never needs to run again.
-  loader: async () => ({ sidebarOpen: getSidebarOpen(), providers: await getProviders() }),
+  // Providers are seeded into the query cache (dehydrated with the page), so the composer's model picker
+  // needs no request after hydration. Later changes go through provider mutations, so this runs once.
+  loader: async ({ context }) => {
+    await context.queryClient.ensureQueryData(providersQueryOptions)
+    return { sidebarOpen: getSidebarOpen() }
+  },
   staleTime: Infinity,
   component: AppLayout,
 })
 
 function AppLayout() {
-  const { sidebarOpen, providers } = Route.useLoaderData()
+  const { sidebarOpen } = Route.useLoaderData()
 
   return (
-    <InitialProvidersProvider value={providers}>
-      <SidebarProvider defaultOpen={sidebarOpen}>
-        <AppSidebar />
-        {/* min-w-0 lets wide tables scroll inside their box instead of widening the page. */}
-        <SidebarInset className="min-w-0">
-          <Outlet />
-        </SidebarInset>
-        <ProviderOnboardingDialog />
-      </SidebarProvider>
-    </InitialProvidersProvider>
+    <SidebarProvider defaultOpen={sidebarOpen}>
+      <AppSidebar />
+      {/* min-w-0 lets wide tables scroll inside their box instead of widening the page. */}
+      <SidebarInset className="min-w-0">
+        <Outlet />
+      </SidebarInset>
+      <ProviderOnboardingDialog />
+    </SidebarProvider>
   )
 }

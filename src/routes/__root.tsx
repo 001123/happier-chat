@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
 import type { ReactNode } from 'react'
-import { createRootRoute, HeadContent, Link, Outlet, Scripts } from '@tanstack/react-router'
+import type { QueryClient } from '@tanstack/react-query'
+import { createRootRouteWithContext, HeadContent, Link, Outlet, Scripts } from '@tanstack/react-router'
 import { TanStackDevtools } from '@tanstack/react-devtools'
+import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
 import { aiDevtoolsPlugin } from '@tanstack/react-ai-devtools'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import appCss from '../styles.css?url'
@@ -35,7 +37,7 @@ const messages = defineMessages({
 const SITE_URL = (import.meta.env.VITE_SITE_URL ?? '').replace(/\/$/, '')
 const OG_IMAGE = `${SITE_URL}/og-image.png`
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => {
     const { siteTitle: SITE_TITLE, siteDescription: SITE_DESCRIPTION, ogLocale } = messages[getLocale()]
     return {
@@ -87,6 +89,7 @@ function RootDocument({ children }: { children: ReactNode }) {
         <TanStackDevtools
           plugins={[
             { name: 'TanStack Router', render: <TanStackRouterDevtoolsPanel /> },
+            { name: 'TanStack Query', render: <ReactQueryDevtoolsPanel /> },
             aiDevtoolsPlugin(),
           ]}
         />

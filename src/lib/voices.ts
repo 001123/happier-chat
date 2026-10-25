@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 import type { CatalogVoice } from '@tanstack/ai'
 
 import { LOCALE_TAGS, getLocale, useLocale } from './i18n'
@@ -18,30 +19,20 @@ export const localeOf = (voiceId: string) => voiceId.split('-').slice(0, 2).join
 
 export const voiceLocale = (voice: CatalogVoice) => voice.labels?.locale ?? localeOf(voice.voiceId)
 
-let request: Promise<Array<CatalogVoice>> | null = null
-function loadVoices() {
-  request ??= fetch('/api/voices')
-    .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-    .catch((e: Error) => {
-      request = null
-      throw e
-    })
-  return request
-}
+const voicesQueryOptions = queryOptions({
+  queryKey: ['voices'],
+  queryFn: async (): Promise<Array<CatalogVoice>> => {
+    const res = await fetch('/api/voices')
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+  // The voice list is static for the lifetime of a session.
+  staleTime: Infinity,
+})
 
 export function useVoices() {
-  const [voices, setVoices] = React.useState<Array<CatalogVoice> | null>(null)
-  const [error, setError] = React.useState<string | null>(null)
-  React.useEffect(() => {
-    let cancelled = false
-    loadVoices()
-      .then((data) => !cancelled && setVoices(data))
-      .catch((e: Error) => !cancelled && setError(e.message))
-    return () => {
-      cancelled = true
-    }
-  }, [])
-  return { voices, error }
+  const { data, error } = useQuery(voicesQueryOptions)
+  return { voices: data ?? null, error: error?.message ?? null }
 }
 
 export function useLocales(voices: Array<CatalogVoice> | null) {

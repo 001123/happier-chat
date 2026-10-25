@@ -2,6 +2,7 @@ import * as React from 'react'
 import { startTransition, ViewTransition } from 'react'
 import { clientTools, fetchServerSentEvents, parsePartialJSON, useChat } from '@tanstack/ai-react'
 import type { UIMessage } from '@tanstack/ai-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { Popover } from '@base-ui/react/popover'
 import { defaultEmojiDataResolver, EmojiPicker } from 'frimousse'
@@ -933,6 +934,7 @@ function useFollowUpSuggestions({
   const [suggestions, setSuggestions] = React.useState<FollowUpSuggestions | null>(null)
   const abortRef = React.useRef<AbortController | null>(null)
   const wasLoading = React.useRef(isLoading)
+  const queryClient = useQueryClient()
 
   React.useEffect(() => {
     const finished = wasLoading.current && !isLoading
@@ -953,19 +955,29 @@ function useFollowUpSuggestions({
     abortRef.current = controller
     const messageId = last.id
     setSuggestions({ messageId, items: null })
-    fetch('/api/suggestions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ threadId, model, question: getText(question), answer }),
-      signal: controller.signal,
-    })
-      .then((res) => res.json() as Promise<{ suggestions?: Array<string> }>)
-      .then(({ suggestions: items = [] }) => {
+    const queryKey = ['suggestions', threadId, messageId]
+    void queryClient
+      .fetchQuery({
+        queryKey,
+        queryFn: async ({ signal }) => {
+          const res = await fetch('/api/suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ threadId, model, question: getText(question), answer }),
+            signal,
+          })
+          const { suggestions: items = [] } = (await res.json()) as { suggestions?: Array<string> }
+          return items
+        },
+        staleTime: Infinity,
+      })
+      .then((items) => {
         if (!controller.signal.aborted) setSuggestions(items.length ? { messageId, items } : null)
       })
       .catch(() => {
         if (!controller.signal.aborted) setSuggestions(null)
       })
+    controller.signal.addEventListener('abort', () => void queryClient.cancelQueries({ queryKey }), { once: true })
   }, [isLoading, enabled, failed, model, messages, threadId])
 
   React.useEffect(() => () => abortRef.current?.abort(), [])

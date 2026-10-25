@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { queryOptions, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useRouteContext, useRouter } from '@tanstack/react-router'
 
 import { Badge } from '@/components/ui/badge'
@@ -7,9 +7,11 @@ import { defineMessages, getLocale, LOCALE_TAGS, useLocale, useMessages } from '
 import { errorMessage } from '@/lib/utils'
 import { getAdminUsers, updateUserRole } from '@/server/admin.functions'
 
+const adminUsersQuery = queryOptions({ queryKey: ['admin', 'users'], queryFn: () => getAdminUsers() })
+
 export const Route = createFileRoute('/_app/settings/admin/users')({
   head: () => ({ meta: [{ title: messages[getLocale()].title }] }),
-  loader: () => getAdminUsers(),
+  loader: ({ context }) => context.queryClient.ensureQueryData(adminUsersQuery),
   component: UsersPage,
 })
 
@@ -40,21 +42,18 @@ function UsersPage() {
   const t = useMessages(messages)
   const locale = useLocale()
   const roleLabels: Record<Role, string> = { admin: t.roleAdmin, user: t.roleUser }
-  const users = Route.useLoaderData()
+  const { data: users } = useSuspenseQuery(adminUsersQuery)
   const { user: me } = useRouteContext({ from: '/_app' })
   const router = useRouter()
-  const [error, setError] = React.useState('')
-
-  async function changeRole(userId: string, role: Role) {
-    setError('')
-    try {
-      await updateUserRole({ data: { userId, role } })
-    } catch (err) {
-      setError(errorMessage(err))
-    }
-    // Demoting yourself drops the admin pages, so re-run the guards too.
-    await router.invalidate()
-  }
+  const queryClient = useQueryClient()
+  const changeRole = useMutation({
+    mutationFn: (change: { userId: string; role: Role }) => updateUserRole({ data: change }),
+    // Demoting yourself drops the admin pages, so re-run the route guards too, even after a failure.
+    onSettled: async () => {
+      await queryClient.invalidateQueries(adminUsersQuery)
+      await router.invalidate()
+    },
+  })
 
   return (
     <div className="flex flex-col gap-8">
@@ -65,9 +64,9 @@ function UsersPage() {
         </p>
       </div>
 
-      {error && (
+      {changeRole.error && (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {errorMessage(changeRole.error)}
         </p>
       )}
 
@@ -86,7 +85,7 @@ function UsersPage() {
             <Select
               items={roleLabels}
               value={user.role}
-              onValueChange={(role: Role | null) => role && role !== user.role && changeRole(user.id, role)}
+              onValueChange={(role: Role | null) => role && role !== user.role && changeRole.mutate({ userId: user.id, role })}
             >
               <SelectTrigger size="sm" className="w-36">
                 <SelectValue />
