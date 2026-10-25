@@ -1,0 +1,26 @@
+skills:
+  dirs:
+    - .claude/skills
+    - .agents/skills
+
+permissions:
+  '@tanstack/ai':
+    skills: true
+  '@tanstack/devtools-vite':
+    skills: true
+  '@tanstack/react-router':
+    skills: true
+  '@tanstack/react-start':
+    skills: true
+  '@tanstack/react-table':
+    skills: true
+  lmdb:
+    build: true
+  msgpackr-extract:
+    build: true
+
+patchedDependencies:
+  # Drops the `intent` bin that shadows @tanstack/intent's CLI and fails with ERR_PACKAGE_PATH_NOT_EXPORTED.
+  # Remove once https://github.com/TanStack/devtools/pull/542 is released
+  # (issue: https://github.com/TanStack/devtools/issues/525).
+  '@tanstack/devtools-vite': patches/@tanstack__devtools-vite.patch

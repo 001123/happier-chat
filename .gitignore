@@ -1,0 +1,26 @@
+node_modules
+
+# Build output
+.output
+dist
+.tanstack
+
+# Local data and secrets
+.data
+.env
+.env.*
+!.env.example
+
+# Personal tool config and caches
+.claude/settings.local.json
+.impeccable/config.local.json
+.impeccable/hook.cache.json
+.impeccable/live
+
+# OS and logs
+.DS_Store
+*.log
+
+# Impeccable platform binaries (launcher downloads them on demand)
+.agents/skills/impeccable/scripts/bin/
+.claude/skills/impeccable/scripts/bin/

@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T21:30:00Z",
+  "title": "Design System: Happier Chat",
+  "extensions": {
+    "colorMeta": {
+      "kiln-terracotta": { "role": "primary", "displayName": "Kiln Terracotta", "canonical": "#c96442", "tonalRamp": ["oklch(25% 0.08 40)", "oklch(35% 0.11 40)", "oklch(45% 0.13 40)", "oklch(55% 0.14 40)", "oklch(62% 0.14 40)", "oklch(72% 0.11 40)", "oklch(84% 0.07 40)", "oklch(95% 0.02 40)"] },
+      "kiln-terracotta-dark": { "role": "primary", "displayName": "Kiln Terracotta (lamplit)", "canonical": "#d97757" },
+      "on-terracotta": { "role": "primary", "displayName": "On Terracotta", "canonical": "#ffffff" },
+      "lavender-chart": { "role": "secondary", "displayName": "Chart Lavender", "canonical": "#9c87f5" },
+      "cream-paper": { "role": "neutral", "displayName": "Cream Paper", "canonical": "#faf9f5", "tonalRamp": ["oklch(18% 0.01 90)", "oklch(28% 0.01 90)", "oklch(40% 0.012 90)", "oklch(55% 0.012 90)", "oklch(70% 0.012 90)", "oklch(84% 0.012 90)", "oklch(93% 0.01 90)", "oklch(98% 0.005 90)"] },
+      "sheet-white": { "role": "neutral", "displayName": "Sheet White", "canonical": "#ffffff" },
+      "linen": { "role": "neutral", "displayName": "Linen", "canonical": "#f0eee6" },
+      "linen-hover": { "role": "neutral", "displayName": "Linen Hover", "canonical": "#ebe9df" },
+      "sidebar-cream": { "role": "neutral", "displayName": "Sidebar Cream", "canonical": "#f5f4ee" },
+      "walnut-ink": { "role": "neutral", "displayName": "Walnut Ink", "canonical": "#3d3929", "tonalRamp": ["oklch(15% 0.02 95)", "oklch(25% 0.025 95)", "oklch(36% 0.03 95)", "oklch(48% 0.03 95)", "oklch(60% 0.025 95)", "oklch(72% 0.02 95)", "oklch(85% 0.015 95)", "oklch(95% 0.008 95)"] },
+      "ash-muted": { "role": "neutral", "displayName": "Ash Muted", "canonical": "#83827d" },
+      "sand-border": { "role": "neutral", "displayName": "Sand Border", "canonical": "#e5e2d6" },
+      "sand-input": { "role": "neutral", "displayName": "Sand Input", "canonical": "#dad6c8" },
+      "brick-warning": { "role": "neutral", "displayName": "Brick Warning", "canonical": "#b5452c" },
+      "lamplit-ground": { "role": "neutral", "displayName": "Lamplit Ground", "canonical": "#262624" },
+      "lamplit-card": { "role": "neutral", "displayName": "Lamplit Card", "canonical": "#30302e" },
+      "lamplit-ink": { "role": "neutral", "displayName": "Lamplit Ink", "canonical": "#e5e3db" },
+      "lamplit-muted": { "role": "neutral", "displayName": "Lamplit Muted", "canonical": "#a3a199" },
+      "lamplit-border": { "role": "neutral", "displayName": "Lamplit Border", "canonical": "#3e3d39" },
+      "lamplit-sidebar": { "role": "neutral", "displayName": "Lamplit Sidebar", "canonical": "#1f1e1d" },
+      "lamplit-bubble": { "role": "neutral", "displayName": "Lamplit Bubble", "canonical": "#141413" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Empty-state greeting on a new chat." },
+      "headline": { "displayName": "Headline", "purpose": "Auth titles and word-card headwords." },
+      "reply": { "displayName": "Reply", "purpose": "Every assistant reply; follows the user's chat font scale." },
+      "chat": { "displayName": "Chat", "purpose": "User messages and the composer; follows the user's chat font scale." },
+      "title": { "displayName": "Title", "purpose": "Card and settings section titles." },
+      "body": { "displayName": "Body", "purpose": "UI text, buttons, menus, fields." },
+      "label": { "displayName": "Label", "purpose": "Badges and small meta." }
+    },
+    "shadows": [
+      { "name": "hairline-lift", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Message bubbles (shadow-xs)." },
+      { "name": "composer-glow", "value": "0 0.25rem 1.25rem rgba(0,0,0,0.04)", "purpose": "Chat composer input group only." },
+      { "name": "floating", "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)", "purpose": "Popovers, menus, dialogs, sheets (shadow-md and above)." },
+      { "name": "speaking-halo", "value": "0 0 0 0.25rem color-mix(in oklab, var(--primary) 14%, transparent)", "purpose": "Paragraph currently being read aloud." }
+    ],
+    "motion": [
+      { "name": "ease-settle", "value": "cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "View transitions and message entry." },
+      { "name": "duration-view", "value": "380ms", "purpose": "View transition groups." },
+      { "name": "duration-highlight", "value": "200ms", "purpose": "Speaking highlight background and halo." },
+      { "name": "logo-turn", "value": "700ms ease-out", "purpose": "Logo flower rotates 120° on hover." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action: send, save, confirm.",
+      "html": "<button class=\"ds-btn-primary\">Lưu thay đổi</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius, 12px); background: var(--primary, #c96442); color: var(--primary-foreground, #fff); font: 500 14px/1 'Geist Variable', sans-serif; cursor: pointer; transition: background 150ms, transform 150ms; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, #c96442) 80%, transparent); } .ds-btn-primary:focus-visible { outline: none; border-color: var(--ring, #c96442); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, #c96442) 50%, transparent); } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Toolbar and message actions.",
+      "html": "<button class=\"ds-btn-ghost\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z\"/><path d=\"M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1\"/></svg>Sao chép</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius, 12px); background: transparent; color: var(--foreground, #3d3929); font: 500 14px/1 'Geist Variable', sans-serif; cursor: pointer; transition: background 150ms; } .ds-btn-ghost:hover { background: var(--muted, #f0eee6); } .ds-btn-ghost:focus-visible { outline: none; border-color: var(--ring, #c96442); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, #c96442) 50%, transparent); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary actions next to a primary.",
+      "html": "<button class=\"ds-btn-outline\">Huỷ</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 1px solid var(--border, #e5e2d6); border-radius: var(--radius, 12px); background: var(--background, #faf9f5); color: var(--foreground, #3d3929); font: 500 14px/1 'Geist Variable', sans-serif; cursor: pointer; transition: background 150ms; } .ds-btn-outline:hover { background: var(--muted, #f0eee6); } .ds-btn-outline:focus-visible { outline: none; border-color: var(--ring, #c96442); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, #c96442) 50%, transparent); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Single-line form field.",
+      "html": "<input class=\"ds-input\" placeholder=\"Email\" />",
+      "css": ".ds-input { height: 32px; width: 240px; padding: 4px 10px; border: 1px solid var(--input, #dad6c8); border-radius: var(--radius, 12px); background: transparent; color: var(--foreground, #3d3929); font: 400 14px/1.4 'Geist Variable', sans-serif; transition: border-color 150ms, box-shadow 150ms; } .ds-input::placeholder { color: var(--muted-foreground, #83827d); } .ds-input:focus-visible { outline: none; border-color: var(--ring, #c96442); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, #c96442) 50%, transparent); }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Small status or count pill.",
+      "html": "<span class=\"ds-badge\">Mới</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; height: 20px; padding: 2px 8px; border-radius: 9999px; background: var(--primary, #c96442); color: var(--primary-foreground, #fff); font: 500 12px/1 'Geist Variable', sans-serif; }"
+    },
+    {
+      "name": "Sidebar Item",
+      "kind": "nav",
+      "refersTo": "sidebar-item",
+      "description": "Thread or project row in the sidebar.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-item-active\" href=\"#\">Ôn từ vựng tuần này</a><a class=\"ds-nav-item\" href=\"#\">Lên kế hoạch du lịch</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 2px; width: 240px; padding: 8px; background: var(--sidebar, #f5f4ee); } .ds-nav-item { display: flex; align-items: center; height: 32px; padding: 0 8px; border-radius: calc(var(--radius, 12px) * 0.8); color: var(--sidebar-foreground, #3d3929); font: 400 14px/1 'Geist Variable', sans-serif; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 150ms; } .ds-nav-item:hover { background: var(--sidebar-accent, #e9e6dc); } .ds-nav-item:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--sidebar-ring, #c96442); } .ds-nav-item-active { background: var(--sidebar-accent, #e9e6dc); font-weight: 500; }"
+    },
+    {
+      "name": "Message Pair",
+      "kind": "custom",
+      "refersTo": "user-bubble",
+      "description": "Signature: sans user bubble and serif assistant reply.",
+      "html": "<div class=\"ds-thread\"><div class=\"ds-msg-user\">Giải thích từ “serendipity” giúp mình nhé?</div><div class=\"ds-msg-reply\">“Serendipity” là sự tình cờ may mắn: tìm thấy điều tốt đẹp khi bạn không hề đi tìm nó.</div></div>",
+      "css": ".ds-thread { display: flex; flex-direction: column; gap: 24px; width: 520px; padding: 24px; background: var(--background, #faf9f5); } .ds-msg-user { align-self: flex-end; max-width: 85%; padding: 10px 16px; border: 1px solid var(--border, #e5e2d6); border-radius: 21.6px 21.6px 9.6px 21.6px; background: var(--user-bubble, #f0eee6); color: var(--foreground, #3d3929); font: 400 15px/1.625 'Geist Variable', sans-serif; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); } .ds-msg-reply { align-self: flex-start; max-width: 85%; padding: 12px 16px; border: 1px solid var(--border, #e5e2d6); border-radius: 21.6px 21.6px 21.6px 9.6px; background: var(--card, #fff); color: var(--card-foreground, #3d3929); font: 400 16.5px/1.7 'Source Serif 4 Variable', Georgia, serif; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }"
+    },
+    {
+      "name": "Composer",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "Signature: the chat input group with ambient glow.",
+      "html": "<div class=\"ds-composer\"><textarea class=\"ds-composer-input\" rows=\"2\" placeholder=\"Hỏi bất cứ điều gì…\"></textarea><div class=\"ds-composer-bar\"><button class=\"ds-composer-send\" aria-label=\"Gửi\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5l0 14\"/><path d=\"M18 11l-6 -6\"/><path d=\"M6 11l6 -6\"/></svg></button></div></div>",
+      "css": ".ds-composer { width: 520px; border: 1px solid var(--border, #e5e2d6); border-radius: 21.6px; background: var(--card, #fff); box-shadow: 0 0.25rem 1.25rem rgba(0,0,0,0.04); transition: border-color 150ms; } .ds-composer:focus-within { border-color: var(--input, #dad6c8); } .ds-composer-input { display: block; width: 100%; min-height: 56px; padding: 16px 16px 0; border: 0; resize: none; background: transparent; color: var(--foreground, #3d3929); font: 400 15px/1.625 'Geist Variable', sans-serif; outline: none; box-sizing: border-box; } .ds-composer-input::placeholder { color: var(--muted-foreground, #83827d); } .ds-composer-bar { display: flex; justify-content: flex-end; padding: 8px; } .ds-composer-send { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: var(--radius, 12px); background: var(--primary, #c96442); color: var(--primary-foreground, #fff); cursor: pointer; transition: background 150ms; } .ds-composer-send:hover { background: color-mix(in oklab, var(--primary, #c96442) 80%, transparent); } .ds-composer-send:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring, #c96442) 50%, transparent); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Settings panels and generative result cards.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">Hà Nội</div><div class=\"ds-card-desc\">Nhiều mây · 24° · Độ ẩm 78%</div></div>",
+      "css": ".ds-card { display: flex; flex-direction: column; gap: 4px; width: 280px; padding: 16px; border-radius: 16.8px; background: var(--card, #fff); color: var(--card-foreground, #3d3929); box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground, #3d3929) 10%, transparent); } .ds-card-title { font: 500 16px/1.375 'Geist Variable', sans-serif; } .ds-card-desc { color: var(--muted-foreground, #83827d); font: 400 14px/1.43 'Geist Variable', sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Warm Study",
+    "overview": "Happier Chat feels like a quiet reading room with good light. Warm cream paper is the ground, walnut-brown ink carries the text, and one kiln-fired terracotta accent marks what you can act on. The assistant answers in a book serif, so a reply reads like a page someone wrote for you, while the interface around it (composer, sidebar, settings) speaks in a calm, neutral sans. Night mode is the same room after dark: lamplit charcoal, warm grey ink, and terracotta that glows a little brighter.\n\nDensity is relaxed but not sparse. The conversation sits in a centred column with generous line height, and the chrome steps back so the reply and the generative cards lead. Depth comes from tone (cream ground, white sheets, linen bubbles) and hairline sand borders, not from shadows. Components are soft and restrained: medium radii, thin borders, near-zero lift, and quick color-only hover changes.\n\nThe system rejects three looks: neon or gradient \"AI\" styling (glowing purple-blue, glassmorphism), cold enterprise dashboards (blue-grey, dense, clinical), and childish playfulness (candy colors, mascots, over-rounded blobs). \"Happier\" is carried by warmth, clarity, and small, considered motion, never by decoration.",
+    "keyCharacteristics": [
+      "Warm cream / walnut / terracotta palette; every neutral leans warm.",
+      "Serif for the assistant's voice and display moments; sans for everything the user operates.",
+      "Flat, tonal layering with hairline borders; shadows only for floating layers.",
+      "One accent, used sparingly for actions, focus, and live states (speaking, active).",
+      "User-adjustable: chat text scales with `--chat-font-scale`, and users may override every color token in Appearance settings."
+    ],
+    "rules": [
+      { "name": "The One Clay Rule", "body": "Terracotta is the only UI accent. It marks actions, focus, and live state; it never fills large areas or decorates.", "section": "colors" },
+      { "name": "The Warm Neutral Rule", "body": "Every neutral leans yellow-brown. No cool greys, no blue-greys, no `#000` or `#fff` text on the page ground.", "section": "colors" },
+      { "name": "The User's Palette Rule", "body": "All color tokens are user-overridable (`src/lib/custom-colors.ts`). New UI must read colors from tokens (`bg-primary`, `bg-card`, `text-muted-foreground`, `border-border`), never hard-code hex, so custom palettes keep working.", "section": "colors" },
+      { "name": "The Two Voices Rule", "body": "Serif belongs to the assistant and to display moments (greeting, brand wordmark in the sidebar, auth titles, word cards). Controls, menus, settings, and user input are always sans.", "section": "typography" },
+      { "name": "The Reader's Scale Rule", "body": "Conversation text uses `text-reply` / `text-chat`, which follow the user's font-scale setting. Never set conversation text in fixed sizes.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces at rest are flat. A shadow means \"this floats above the page\", and nothing in the page flow floats.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** read every color from tokens (`primary`, `card`, `muted`, `border`…) so user palettes and dark mode keep working.",
+      "**Do** set assistant output in Source Serif 4 at `text-reply` with 1.7 leading, and user input in Geist at `text-chat`.",
+      "**Do** separate surfaces by tone and 1px sand borders; reserve `shadow-md` and above for floating layers.",
+      "**Do** keep terracotta for actions, focus, and live state.",
+      "**Do** honor `prefers-reduced-motion`; motion is short (200–380ms) with `cubic-bezier(0.2, 0.8, 0.2, 1)`.",
+      "**Do** design every string slot for more than two languages and longer translations."
+    ],
+    "donts": [
+      "**Don't** use neon, purple-blue gradients, glows, or glassmorphism.",
+      "**Don't** drift into a cold enterprise dashboard: no blue-grey neutrals, no dense data-grid chrome in the conversation.",
+      "**Don't** go childish: no candy colors, mascots, or over-rounded blob shapes.",
+      "**Don't** introduce a second UI accent color; lavender is for charts only.",
+      "**Don't** hard-code hex values or fixed font sizes for conversation text.",
+      "**Don't** use solid red fills for destructive actions; use the brick tint."
+    ]
+  }
+}

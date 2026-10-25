@@ -1,0 +1,7 @@
+# SearXNG for the lab: enables the JSON API so the web_search server tool can call it.
+use_default_settings: true
+server:
+  secret_key: "lab-tanstack-ai-local-only"
+  limiter: false
+search:
+  formats: [html, json]

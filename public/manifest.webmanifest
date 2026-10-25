@@ -1,0 +1,13 @@
+{
+  "name": "Happier Chat",
+  "short_name": "Happier Chat",
+  "description": "Trò chuyện cùng AI, vui hơn mỗi ngày.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf9f5",
+  "theme_color": "#e89f0c",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

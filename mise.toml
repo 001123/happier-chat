@@ -1,0 +1,12 @@
+[tasks.streams]
+description = "Durable Streams server (run logs, survives app restart)"
+run = "pnpm streams"
+
+[tasks."dev:app"]
+description = "Dev server for the app"
+run = "portless"
+
+# mise runs the depends in parallel and prefixes output with the task name; Ctrl+C stops both.
+[tasks.dev]
+description = "Run Durable Streams + dev server together"
+depends = ["streams", "dev:app"]

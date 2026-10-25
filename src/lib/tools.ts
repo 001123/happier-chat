@@ -1,0 +1,197 @@
+import { toolDefinition } from '@tanstack/ai'
+import { z } from 'zod'
+
+export const weatherConditions = ['sunny', 'cloudy', 'rain', 'storm', 'windy'] as const
+export type WeatherCondition = (typeof weatherConditions)[number]
+
+export const weatherSchema = z.object({
+  city: z.string(),
+  condition: z.enum(weatherConditions),
+  conditionLabel: z.string(),
+  temperature: z.number(),
+  feelsLike: z.number(),
+  high: z.number(),
+  low: z.number(),
+  humidity: z.number(),
+  windKph: z.number(),
+  date: z.string(),
+  hourly: z.array(
+    z.object({
+      hour: z.number().int().min(0).max(23),
+      temperature: z.number(),
+      condition: z.enum(weatherConditions),
+    }),
+  ),
+})
+export type Weather = z.infer<typeof weatherSchema>
+
+export const getWeatherDef = toolDefinition({
+  name: 'get_weather',
+  description: 'Get the current weather for a city',
+  inputSchema: z.object({
+    city: z.string().meta({ description: 'City name' }),
+  }),
+  outputSchema: weatherSchema,
+})
+
+export const setThemeDef = toolDefinition({
+  name: 'set_theme',
+  description: 'Switch the app appearance to light or dark mode',
+  inputSchema: z.object({ theme: z.enum(['light', 'dark']) }),
+  outputSchema: z.object({ applied: z.boolean() }),
+})
+
+export const sendEmailDef = toolDefinition({
+  name: 'send_email',
+  description:
+    'Send an email (simulated). The UI automatically asks the user for approval, so call the tool right away instead of asking for confirmation in text.',
+  inputSchema: z.object({
+    to: z.string(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  outputSchema: z.object({ sent: z.boolean(), messageId: z.string() }),
+  needsApproval: true,
+})
+
+export const reactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉'] as const
+export type ReactionEmoji = (typeof reactionEmojis)[number]
+
+export const reactToMessageDef = toolDefinition({
+  name: 'react_to_message',
+  description:
+    "React with an emotion emoji to the user's most recent message. Only use this when the message truly evokes emotion (joy, thanks, sad news, sharing an achievement...), at most once per turn, and still reply with text as usual.",
+  inputSchema: z.object({ emoji: z.enum(reactionEmojis) }),
+  outputSchema: z.object({ reacted: z.boolean() }),
+})
+
+export const webResultSchema = z.object({
+  title: z.string(),
+  url: z.string(),
+  snippet: z.string(),
+})
+export type WebResult = z.infer<typeof webResultSchema>
+
+export const webSearchDef = toolDefinition({
+  name: 'web_search',
+  description:
+    'Search the web and return a list of titles, URLs and snippets. Use when you need up-to-date information or are unsure. Snippets are usually short, so use fetch_page to read the most relevant page in full.',
+  inputSchema: z.object({
+    query: z.string().meta({ description: 'Search keywords' }),
+  }),
+  outputSchema: z.object({
+    engine: z.string(),
+    results: z.array(webResultSchema),
+  }),
+})
+
+export const fetchPageDef = toolDefinition({
+  name: 'fetch_page',
+  description: 'Fetch a web page and return its text content (HTML removed, truncated).',
+  inputSchema: z.object({
+    url: z.string().meta({ description: 'http(s) URL to read' }),
+  }),
+  outputSchema: z.object({
+    url: z.string(),
+    title: z.string(),
+    content: z.string(),
+    truncated: z.boolean(),
+  }),
+})
+
+export const mapLocationSchema = z.object({
+  query: z.string(),
+  name: z.string(),
+  address: z.string(),
+  lat: z.number().nullable(),
+  lng: z.number().nullable(),
+  zoom: z.number().int().min(1).max(21),
+})
+export type MapLocation = z.infer<typeof mapLocationSchema>
+
+export const showMapDef = toolDefinition({
+  name: 'show_map',
+  description:
+    'Show an interactive Google Maps view of a place (city, address, restaurant, building...) directly in the chat. Use when the user wants to see a map, a location, or directions. Do not paste a Google Maps link into the answer, since the UI already displays the map.',
+  inputSchema: z.object({
+    query: z.string().meta({ description: 'Place name or address, as specific as possible' }),
+    zoom: z
+      .number()
+      .int()
+      .min(1)
+      .max(21)
+      .optional()
+      .meta({ description: 'Zoom level: ~5 country, ~11 city, ~15 neighborhood, ~17 specific address' }),
+  }),
+  outputSchema: mapLocationSchema,
+})
+
+export const wordExampleSchema = z.object({
+  en: z.string().meta({ description: 'English example sentence containing the word being learned' }),
+  vi: z.string().meta({ description: 'Vietnamese translation of the sentence' }),
+})
+
+export const wordImageSchema = z.object({
+  title: z.string(),
+  thumbUrl: z.string(),
+  pageUrl: z.string(),
+})
+export type WordImage = z.infer<typeof wordImageSchema>
+
+export const learnWordInputSchema = z.object({
+  word: z.string().meta({ description: 'English word to learn, in lowercase' }),
+  partOfSpeech: z.string().meta({ description: 'Part of speech, e.g. "adjective", "verb (past of light)"' }),
+  ipaUs: z.string().meta({ description: 'US English IPA transcription, enclosed in /.../' }),
+  ipaUk: z.string().meta({ description: 'UK English IPA transcription, enclosed in /.../' }),
+  meaningVi: z.string().meta({ description: 'Short meaning in Vietnamese; separate multiple meanings with "; "' }),
+  examples: z
+    .array(wordExampleSchema)
+    .length(5)
+    .meta({ description: '5 natural example sentences, varied in context and meaning' }),
+  imageQueries: z
+    .array(z.string())
+    .length(3)
+    .meta({ description: '3 short English keywords to search for illustrative images, one per meaning or context, e.g. "lit candle"' }),
+})
+export type LearnWordInput = z.infer<typeof learnWordInputSchema>
+
+export const learnWordDef = toolDefinition({
+  name: 'learn_word',
+  description:
+    'Display an English vocabulary card: IPA with a listen button, a YouGlish pronunciation video, 5 example sentences with read-aloud buttons, and 3 illustrative images. Use when the user wants to learn or look up an English word (e.g. "help me learn the word lit"). The card already shows all the content, so the text reply only needs 1-2 memory tips.',
+  inputSchema: learnWordInputSchema,
+  outputSchema: z.object({ images: z.array(wordImageSchema) }),
+})
+
+export const quizInputSchema = z.object({
+  title: z.string().meta({ description: 'Instruction shown above every question, in the reply language, e.g. "Fill in the blank with the present perfect:"' }),
+  questions: z
+    .array(
+      z.object({
+        question: z.string().meta({ description: 'The question; use ___ for a blank.' }),
+        options: z
+          .array(
+            z.object({
+              text: z.string(),
+              explanation: z.string().meta({ description: 'One sentence explaining why this option is right or wrong, written in the reply language from the system prompt (not the language being practised).' }),
+            }),
+          )
+          .min(2)
+          .max(4),
+        answer: z.number().int().min(0).meta({ description: 'Index of the correct option.' }),
+        hint: z.string().optional().meta({ description: 'Short hint that does not give the answer away, written in the reply language.' }),
+      }),
+    )
+    .min(1)
+    .max(10),
+})
+
+export type QuizInput = z.infer<typeof quizInputSchema>
+
+export const showQuizDef = toolDefinition({
+  name: 'show_quiz',
+  description:
+    'Display an interactive multiple-choice quiz card: one question at a time with prev/next navigation, a hint button, instant grading when the user picks an option (wrong pick in red, right answer in green, each with its explanation), and a score summary at the end. Use it for any multiple-choice practice (grammar, vocabulary, reading...). The card grades on its own, so do not reveal answers in the text reply; just introduce the quiz in one sentence. If it returns issues, call it again with the fixed quiz.',
+  inputSchema: quizInputSchema,
+  outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()) }),
+})
