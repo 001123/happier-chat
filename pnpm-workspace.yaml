@@ -4,9 +4,19 @@ skills:
     - .agents/skills
 
 permissions:
+  '@google/genai':
+    build: false
   '@tanstack/ai':
     skills: true
+  '@tanstack/ai-code-mode':
+    skills: true
+  '@tanstack/ai-persistence':
+    skills: true
   '@tanstack/devtools-vite':
+    skills: true
+  '@tanstack/react-db':
+    skills: true
+  '@tanstack/react-hotkeys':
     skills: true
   '@tanstack/react-router':
     skills: true
@@ -18,6 +28,8 @@ permissions:
     build: true
   msgpackr-extract:
     build: true
+  protobufjs:
+    build: false
 
 patchedDependencies:
   # Drops the `intent` bin that shadows @tanstack/intent's CLI and fails with ERR_PACKAGE_PATH_NOT_EXPORTED.
