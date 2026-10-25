@@ -12,6 +12,7 @@ import {
 } from '@tanstack/ai'
 import type { ChatMiddleware, StreamDurability } from '@tanstack/ai'
 import { durableStream } from '@tanstack/ai-durable-stream'
+import { reconstructChat, withPersistence } from '@tanstack/ai-persistence'
 import {
   fetchPageDef,
   getWeatherDef,
@@ -35,6 +36,7 @@ import { buildSpec, renderUiDef, specIssues } from '@/lib/generative-ui'
 import { MODE_PROMPTS, isModeId } from '@/lib/modes'
 import type { Weather, WeatherCondition } from '@/lib/tools'
 import { parseModelKey } from '@/lib/providers'
+import { chatPersistenceFor } from '@/server/chat-persistence.server'
 import { createUserAdapter } from '@/server/providers.server'
 import { getSessionUser } from '@/server/session.server'
 
@@ -241,6 +243,12 @@ export const Route = createFileRoute('/api/chat')({
       GET: ({ request }) => {
         const user = getSessionUser()
         if (!user) return unauthorized()
+        // Opening a thread asks for its stored transcript (?threadId=); rejoining a live run names a runId.
+        const params = new URL(request.url).searchParams
+        if (params.has('threadId') && !params.has('runId')) {
+          // The stores only see this user's rows, so a thread id that belongs to someone else reads as empty.
+          return reconstructChat(chatPersistenceFor(user.id), request, { authorize: () => true })
+        }
         return resumeServerSentEventsResponse({ adapter: durabilityFor(request, user.id) })
       },
       DELETE: ({ request }) => {
@@ -308,7 +316,7 @@ export const Route = createFileRoute('/api/chat')({
           // The default cap of 5 model turns ends research runs (search + several fetch_page calls)
           // right after a tool call, before the model gets to write a reply. finalStep forces one.
           agentLoopStrategy: combineStrategies([maxIterations(MAX_STEPS), untilFinishReason(['length'])]),
-          middleware: [finalStep, stopAfterUi],
+          middleware: [finalStep, stopAfterUi, withPersistence(chatPersistenceFor(user.id))],
           abortController,
         })
 

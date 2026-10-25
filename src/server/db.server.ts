@@ -45,6 +45,51 @@ const SCHEMA = `
     primary key (provider_id, model_id)
   );
 
+  -- Chat state is keyed by (user_id, id) everywhere: ids come from the client, so they never identify a row alone.
+  create table if not exists chat_threads (
+    user_id text not null references users(id) on delete cascade,
+    id text not null,
+    title text not null,
+    updated_at integer not null,
+    project_id text,
+    renamed integer not null default 0,
+    archived integer not null default 0,
+    mode text,
+    primary key (user_id, id)
+  );
+
+  create table if not exists chat_messages (
+    user_id text not null references users(id) on delete cascade,
+    thread_id text not null,
+    messages text not null,
+    updated_at integer not null,
+    primary key (user_id, thread_id)
+  );
+
+  create table if not exists chat_runs (
+    user_id text not null references users(id) on delete cascade,
+    run_id text not null,
+    thread_id text not null,
+    status text not null,
+    started_at integer not null,
+    data text not null,
+    primary key (user_id, run_id)
+  );
+  create index if not exists chat_runs_thread on chat_runs(user_id, thread_id, started_at);
+
+  create table if not exists chat_interrupts (
+    user_id text not null references users(id) on delete cascade,
+    interrupt_id text not null,
+    run_id text not null,
+    thread_id text not null,
+    status text not null,
+    requested_at integer not null,
+    data text not null,
+    primary key (user_id, interrupt_id)
+  );
+  create index if not exists chat_interrupts_thread on chat_interrupts(user_id, thread_id, requested_at);
+  create index if not exists chat_interrupts_run on chat_interrupts(user_id, run_id, requested_at);
+
   create table if not exists catalog_meta (
     id integer primary key check (id = 1),
     providers text not null,

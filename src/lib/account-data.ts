@@ -1,9 +1,10 @@
-// Chats, projects and chat settings live in localStorage, which every account on this browser shares.
+// Projects and chat settings live in localStorage, which every account on this browser shares. Chats
+// live on the server; the thread list kept here is only a cache of the signed-in account's list.
 // They are tagged with the user who wrote them and wiped when a different user signs in or on logout.
 // Device preferences (theme, display, colors, speech) are left alone.
 
 const OWNER_KEY = 'data-owner'
-const ACCOUNT_KEYS = ['chat-threads', 'chat-projects', 'chat-reactions', 'chat-settings', 'chat-threads-sort', 'chat-archived-open']
+const ACCOUNT_KEYS = ['chat-threads', 'chat-threads-migrated', 'chat-projects', 'chat-reactions', 'chat-settings', 'chat-threads-sort', 'chat-archived-open']
 // localStoragePersistence() default key prefix for chat transcripts.
 const ACCOUNT_PREFIXES = ['tanstack-ai:']
 

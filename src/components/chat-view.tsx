@@ -48,7 +48,7 @@ import { WordCard, parseWordImages } from '@/components/word-card'
 import { GenerativeUI } from '@/components/generative-ui'
 import { ConversationMinimap } from '@/components/conversation-minimap'
 import { ComposerTools } from '@/components/composer-tools'
-import { greeting, shellCopy, takeFallbackInput } from '@/components/chat-view-skeleton'
+import { ChatViewSkeleton, greeting, shellCopy, takeFallbackInput } from '@/components/chat-view-skeleton'
 import {
   InputGroup,
   InputGroupAddon,
@@ -93,7 +93,8 @@ import { useSpeechSettings } from '@/lib/speech-settings'
 import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
 import type { SpeakerStatus } from '@/lib/use-speaker'
 import { toggleReaction, useReactions } from '@/lib/reactions'
-import { chatPersistence, hasThread, setThreadBusy, upsertThread, usePendingProject, useThreads } from '@/lib/threads'
+import { hasThread, setThreadBusy, upsertThread, usePendingProject, useThreads, useThreadsSynced } from '@/lib/threads'
+import { clearThread } from '@/server/threads.functions'
 import { useProjects } from '@/lib/projects'
 import {
   fetchPageDef,
@@ -395,7 +396,8 @@ export function ChatView({ threadId }: { threadId: string }) {
   const { messages, sendMessage, setMessages, reload, isLoading, stop, error, interrupts } = useChat<typeof tools>({
     threadId,
     forwardedProps,
-    persistence: chatPersistence,
+    // The transcript lives on the server (GET /api/chat?threadId=), so a thread opens on any device.
+    persistence: true,
     connection: fetchServerSentEvents('/api/chat'),
     tools,
     onChunk: (chunk) => {
@@ -495,10 +497,13 @@ export function ChatView({ threadId }: { threadId: string }) {
   })
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
-  function editMessage(index: number, text: string) {
+  async function editMessage(index: number, text: string) {
     setEditingId(null)
     if (isLoading || interrupts.length > 0) stopRun()
     setMessages(messages.slice(0, index))
+    // The server keeps a stored message the new transcript does not mention, so an edited first message
+    // would leave the old conversation behind it.
+    if (index === 0) await clearThread({ data: { id: threadId } }).catch(() => {})
     void sendMessage(text)
   }
 
@@ -511,7 +516,10 @@ export function ChatView({ threadId }: { threadId: string }) {
   )
   const messageIds = React.useMemo(() => messages.map((m) => m.id), [messages])
 
-  const [started, setStarted] = React.useState(() => hasThread(threadId))
+  const threadsSynced = useThreadsSynced()
+  const [sent, setStarted] = React.useState(() => hasThread(threadId))
+  // A thread known to the server (opened by link on another device) or already holding messages has started.
+  const started = sent || Boolean(thread) || messages.length > 0
 
   const firstUserText = messages.find((m) => m.role === 'user')
   const messageCount = messages.length
@@ -590,6 +598,9 @@ export function ChatView({ threadId }: { threadId: string }) {
   )
 
   function renderMain() {
+  // The thread list arrives with the page; until it is applied, a deep-linked chat cannot tell new from existing.
+  if (!started && !threadsSynced) return <ChatViewSkeleton threadId={threadId} />
+
   if (!started) {
     return (
       <div className="flex h-dvh flex-col">
