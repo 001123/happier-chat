@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { createRouter } from '@tanstack/react-router'
 import { setupRouterSsrQueryIntegration } from '@tanstack/react-router-ssr-query'
+import { bindDbQueryClient } from '@/lib/db'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
@@ -19,6 +20,8 @@ export function getRouter() {
   })
 
   setupRouterSsrQueryIntegration({ router, queryClient })
+  // Collections live in the browser only and share this client with the rest of the app.
+  if (typeof window !== 'undefined') bindDbQueryClient(queryClient)
 
   return router
 }

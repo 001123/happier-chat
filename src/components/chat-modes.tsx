@@ -6,7 +6,7 @@ import { cn } from 'cn'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { MODE_IDS } from '@/lib/modes'
 import type { ModeId } from '@/lib/modes'
-import { setThreadMode, usePendingMode, useThreads } from '@/lib/threads'
+import { setThreadMode, usePendingMode, useThread } from '@/lib/threads'
 
 const MODE_ICONS: Record<ModeId, Icon> = {
   leetcode: IconBrandLeetcode,
@@ -72,7 +72,7 @@ const messages = defineMessages({
 
 /** Active mode of a thread, or the one picked before its first message. */
 export function useChatMode(threadId: string): ModeId | null {
-  const thread = useThreads().find((t) => t.id === threadId)
+  const thread = useThread(threadId)
   const pending = usePendingMode(threadId)
   return thread ? (thread.mode ?? null) : pending
 }

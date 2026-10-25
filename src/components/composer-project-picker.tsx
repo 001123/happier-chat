@@ -6,7 +6,7 @@ import { itemClass, popupClass } from '@/components/composer-settings-menu'
 import { InputGroupButton } from '@/components/ui/input-group'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { setProjectCollapsed, useProjects } from '@/lib/projects'
-import { moveThread, setPendingProject, usePendingProject, useThreads } from '@/lib/threads'
+import { moveThread, setPendingProject, usePendingProject, useThread } from '@/lib/threads'
 
 const messages = defineMessages({
   vi: {
@@ -32,7 +32,7 @@ const NONE = '__none__'
 export function ComposerProjectPicker({ threadId }: { threadId: string }) {
   const t = useMessages(messages)
   const projects = useProjects()
-  const thread = useThreads().find((t) => t.id === threadId)
+  const thread = useThread(threadId)
   const pending = usePendingProject(threadId)
 
   const raw = thread ? (thread.projectId ?? null) : pending

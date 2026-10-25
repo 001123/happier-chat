@@ -95,7 +95,7 @@ import { useSpeechSettings } from '@/lib/speech-settings'
 import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
 import type { SpeakerStatus } from '@/lib/use-speaker'
 import { toggleReaction, useReactions } from '@/lib/reactions'
-import { hasThread, setThreadBusy, upsertThread, usePendingProject, useThreads, useThreadsSynced } from '@/lib/threads'
+import { hasThread, setThreadBusy, upsertThread, usePendingProject, useThread, useThreadsSynced } from '@/lib/threads'
 import { clearThread } from '@/server/threads.functions'
 import { useProjects } from '@/lib/projects'
 import {
@@ -384,7 +384,7 @@ export function ChatView({ threadId }: { threadId: string }) {
   const activeModel = useActiveModel()
   const model = activeModel?.key
   const stats = useChatStats(model, effort)
-  const thread = useThreads().find((t) => t.id === threadId)
+  const thread = useThread(threadId)
   const pendingProjectId = usePendingProject(threadId)
   const projectId = thread ? (thread.projectId ?? null) : pendingProjectId
   const project = useProjects().find((p) => p.id === projectId)

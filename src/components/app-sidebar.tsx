@@ -68,11 +68,12 @@ import {
   pendingProject,
   renameThread,
   setThreadsArchived,
+  useArchivedThreads,
+  useLiveThreads,
   useThreadBusy,
-  useThreads,
 } from '@/lib/threads'
-import type { Thread } from '@/lib/threads'
-import { LOCALE_TAGS, defineMessages, getLocale, useMessages } from '@/lib/i18n'
+import type { Thread, ThreadSort } from '@/lib/threads'
+import { defineMessages, useMessages } from '@/lib/i18n'
 
 /** Pencil over an open rounded square: the "compose" mark people know from ChatGPT. */
 function ComposeIcon({ className }: { className?: string }) {
@@ -200,13 +201,8 @@ const messages = defineMessages({
   },
 })
 
-const SORTS = {
-  newest: { compare: (a: Thread, b: Thread) => b.updatedAt - a.updatedAt },
-  oldest: { compare: (a: Thread, b: Thread) => a.updatedAt - b.updatedAt },
-  az: { compare: (a: Thread, b: Thread) => a.title.localeCompare(b.title, LOCALE_TAGS[getLocale()]) },
-  za: { compare: (a: Thread, b: Thread) => b.title.localeCompare(a.title, LOCALE_TAGS[getLocale()]) },
-} as const
-type SortKey = keyof typeof SORTS
+const SORT_KEYS = ['newest', 'oldest', 'az', 'za'] as const satisfies ReadonlyArray<ThreadSort>
+type SortKey = ThreadSort
 const SORT_KEY = 'chat-threads-sort'
 const SKELETON_WIDTHS = ['72%', '58%', '84%', '64%', '76%']
 
@@ -320,7 +316,6 @@ function NameInput({
 export function AppSidebar() {
   const t = useMessages(messages)
   const sortLabels = { newest: t.sortNewest, oldest: t.sortOldest, az: t.sortAz, za: t.sortZa }
-  const threads = useThreads()
   const projects = useProjects()
   const navigate = useNavigate()
   const { threadId } = useParams({ strict: false })
@@ -330,27 +325,29 @@ export function AppSidebar() {
   const [sort, setSort] = React.useState<SortKey>('newest')
   React.useEffect(() => {
     const saved = localStorage.getItem(SORT_KEY)
-    if (saved && saved in SORTS) setSort(saved as SortKey)
+    if (SORT_KEYS.includes(saved as SortKey)) setSort(saved as SortKey)
   }, [])
   const changeSort = (value: SortKey) => {
     setSort(value)
     localStorage.setItem(SORT_KEY, value)
   }
-  const sorted = React.useMemo(
-    () => [...threads].sort(SORTS[sort].compare),
-    [threads, sort],
-  )
+  // Sorting and the archived split happen in live queries; only the diacritic-insensitive search runs here.
+  const liveAll = useLiveThreads(sort)
+  const archivedAll = useArchivedThreads(sort)
   const [query, setQuery] = React.useState('')
   const needle = normalize(query.trim())
   const searching = needle !== ''
-  const visible = React.useMemo(
-    () => (needle ? sorted.filter((t) => normalize(t.title).includes(needle)) : sorted),
-    [sorted, needle],
+  const live = React.useMemo(
+    () => (needle ? liveAll.filter((t) => normalize(t.title).includes(needle)) : liveAll),
+    [liveAll, needle],
   )
+  const archived = React.useMemo(
+    () => (needle ? archivedAll.filter((t) => normalize(t.title).includes(needle)) : archivedAll),
+    [archivedAll, needle],
+  )
+  const threads = React.useMemo(() => [...liveAll, ...archivedAll], [liveAll, archivedAll])
   const projectIds = React.useMemo(() => new Set(projects.map((p) => p.id)), [projects])
-  const live = visible.filter((t) => !t.archived)
-  const archived = visible.filter((t) => t.archived)
-  const liveCount = threads.filter((t) => !t.archived).length
+  const liveCount = liveAll.length
   const ungrouped = live.filter((t) => !t.projectId || !projectIds.has(t.projectId))
   const byProject = React.useMemo(() => {
     const map = new Map<string, Array<Thread>>()
@@ -874,7 +871,7 @@ export function AppSidebar() {
                       value={sort}
                       onValueChange={(value: SortKey) => changeSort(value)}
                     >
-                      {(Object.keys(SORTS) as Array<SortKey>).map((key) => (
+                      {SORT_KEYS.map((key) => (
                         <Menu.RadioItem
                           key={key}
                           value={key}

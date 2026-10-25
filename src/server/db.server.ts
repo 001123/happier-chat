@@ -60,6 +60,16 @@ const SCHEMA = `
     primary key (user_id, id)
   );
 
+  create table if not exists chat_projects (
+    user_id text not null references users(id) on delete cascade,
+    id text not null,
+    name text not null,
+    created_at integer not null,
+    collapsed integer not null default 0,
+    instructions text,
+    primary key (user_id, id)
+  );
+
   create table if not exists chat_messages (
     user_id text not null references users(id) on delete cascade,
     thread_id text not null,

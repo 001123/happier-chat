@@ -4,7 +4,7 @@
 // Device preferences (theme, display, colors, speech) are left alone.
 
 const OWNER_KEY = 'data-owner'
-const ACCOUNT_KEYS = ['chat-threads', 'chat-threads-migrated', 'chat-projects', 'chat-reactions', 'chat-settings', 'chat-threads-sort', 'chat-archived-open']
+const ACCOUNT_KEYS = ['chat-threads', 'chat-threads-migrated', 'chat-projects', 'chat-projects-migrated', 'chat-reactions', 'chat-settings', 'chat-threads-sort', 'chat-archived-open']
 // localStoragePersistence() default key prefix for chat transcripts.
 const ACCOUNT_PREFIXES = ['tanstack-ai:']
 
