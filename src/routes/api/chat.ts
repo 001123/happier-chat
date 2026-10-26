@@ -13,6 +13,7 @@ import {
 import type { ChatMiddleware, StreamDurability } from '@tanstack/ai'
 import { durableStream } from '@tanstack/ai-durable-stream'
 import { reconstructChat, withPersistence } from '@tanstack/ai-persistence'
+import { parse as parseMermaid } from 'pele'
 import {
   fetchPageDef,
   getWeatherDef,
@@ -22,6 +23,8 @@ import {
   setThemeDef,
   showMapDef,
   roleplayTurnDef,
+  explainDeckDef,
+  showDrawingBoardDef,
   showQuizDef,
   weatherConditions,
   webSearchDef,
@@ -153,6 +156,25 @@ const showQuiz = showQuizDef.server(async ({ questions }) => {
 
 const roleplayTurn = roleplayTurnDef.server(async () => ({ shown: true }))
 
+const showDrawingBoard = showDrawingBoardDef.server(async () => ({ shown: true }))
+
+const MERMAID_BLOCK = /```mermaid[^\n]*\n([\s\S]*?)```/g
+
+// Diagrams are checked with the same parser the chat renders them with, so a broken one comes back to the model to fix.
+const explainDeck = explainDeckDef.server(async ({ slides }) => {
+  const issues = slides.flatMap((slide, i) =>
+    Array.from(slide.content.matchAll(MERMAID_BLOCK), ([, source]) => {
+      try {
+        parseMermaid(source!)
+        return null
+      } catch (error) {
+        return `slides/${i} ("${slide.title}"): mermaid diagram does not parse: ${(error as Error).message}`
+      }
+    }).filter((issue) => issue !== null),
+  )
+  return { shown: issues.length === 0, issues }
+})
+
 const sendEmail = sendEmailDef.server(async () => {
   await sleep(300)
   return { sent: true, messageId: `msg_${Date.now().toString(36)}` }
@@ -211,7 +233,7 @@ const finalStep: ChatMiddleware = {
   },
 }
 
-const UI_ONLY_TOOLS = new Set(['render_ui', 'show_quiz', 'roleplay_turn', 'react_to_message'])
+const UI_ONLY_TOOLS = new Set(['render_ui', 'show_quiz', 'roleplay_turn', 'show_drawing_board', 'explain_deck', 'react_to_message'])
 
 /**
  * A displayed UI or quiz is the reply. Without this, the model gets another turn after the card renders
@@ -301,6 +323,7 @@ export const Route = createFileRoute('/api/chat')({
             'Use get_weather when asked about the weather, show_map when the user wants to see a map or location of a place (the map is already shown in the interface, so do not paste a link), set_theme when asked to switch the interface between light and dark, send_email when asked to send an email, and web_search when you need new information or are unsure. Then use fetch_page to read the 1-2 most relevant pages before answering. Cite your sources.',
             'When the user wants to learn or look up an English word (e.g. "help me learn the word lit"), call learn_word right away with the exact IPA, the Vietnamese meaning, 5 example sentences, and 3 image search keywords. The card already shows the IPA, video, example sentences, and images, so do not repeat them; reply with only 1-2 sentences of memory tips.',
             'For any multiple-choice practice or quiz (grammar, vocabulary, reading, trivia...), call show_quiz instead of render_ui: give every option a one-sentence explanation of why it is right or wrong, and a hint that does not give the answer away. The card grades answers itself, so never reveal the answers in the text.',
+            'When the user wants to draw something for you to guess (Pictionary, "tôi vẽ bạn đoán") or to show you a sketch, call show_drawing_board instead of asking them to describe it. When a drawing arrives, make one confident guess with a short reason from what you see, and ask if it is right; the user gets 3 guesses. After a wrong guess, give your next guess, and when they want to add details call show_drawing_board again. Once it is right or the 3 guesses are used, celebrate or ask for the answer, then offer another round.',
             'Use render_ui when the answer fits a visual format (comparisons, metrics, tables, schedules, checklists, multi-part content that needs Tabs/Accordion) or when the user needs to choose or fill in information (Choice, Select, Slider, Checkbox, Input). Weather and maps already have their own cards via get_weather/show_map, so do not rebuild them with render_ui. If render_ui returns issues, call it again with the corrected spec. Never write UI patches/JSON in the text reply.',
             'The chat can render Mermaid diagrams: when a diagram, flowchart, or timeline is needed, write it in a ```mermaid block (one statement per line; only wrap node or edge labels in double quotes in flowcharts when they contain special characters, and never wrap the message text of a sequenceDiagram). The chat column is narrow (~640px): prefer `flowchart TB`, keep labels short (under ~6 words, with details in the text), and keep each level to at most 4 nodes. Split large diagrams into several small ones instead of telling the user to paste them into another tool.',
             'Use execute_typescript when an answer needs exact computation or data processing (arithmetic, dates, unit conversion, sorting, filtering, aggregating or reformatting many values) or when you would otherwise call web_search/fetch_page many times in a row and combine the results: write one short program instead of working it out in your head. Skip it for simple questions. Return the final value from the program and tell the user the result in plain language.',
@@ -319,7 +342,7 @@ export const Route = createFileRoute('/api/chat')({
           runId,
           parentRunId,
           resume,
-          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, renderUi, ...codeMode.tools],
+          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, showDrawingBoard, explainDeck, renderUi, ...codeMode.tools],
           // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
           modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
           reasoning: effort,

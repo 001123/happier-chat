@@ -25,7 +25,7 @@ import {
 } from '@tabler/icons-react'
 
 import { Logo } from '@/components/logo'
-import { SHORTCUTS, useShortcutLabel, withShortcut } from '@/lib/shortcuts'
+import { appHotkeys, useShortcutLabel, withShortcut } from '@/lib/shortcuts'
 import { VirtualMenuItems } from '@/components/virtual-menu-items'
 import type { RowProps } from '@/components/virtual-menu-items'
 import { ProjectInstructionsDialog } from '@/components/project-instructions-dialog'
@@ -65,7 +65,6 @@ import {
   useProjects,
 } from '@/lib/projects'
 import {
-  deleteThread,
   deleteThreads,
   moveThread,
   newThreadInProject,
@@ -121,6 +120,7 @@ const messages = defineMessages({
     archiveThread: 'Lưu trữ cuộc trò chuyện',
     delete: 'Xoá',
     deleteThread: 'Xoá cuộc trò chuyện',
+    confirmDelete: 'Bấm lần nữa để xoá',
     newChat: 'Cuộc trò chuyện mới',
     searchPlaceholder: 'Tìm cuộc trò chuyện',
     searchLabel: 'Tìm cuộc trò chuyện theo tên',
@@ -173,6 +173,7 @@ const messages = defineMessages({
     archiveThread: 'Archive conversation',
     delete: 'Delete',
     deleteThread: 'Delete conversation',
+    confirmDelete: 'Click again to delete',
     newChat: 'New chat',
     searchPlaceholder: 'Search conversations',
     searchLabel: 'Search conversations by name',
@@ -453,13 +454,33 @@ export function AppSidebar() {
   const toggleAll = () =>
     setSelected(allState === true ? new Set() : new Set(scopeThreads.map((t) => t.id)))
   const [confirming, setConfirming] = React.useState(false)
-  const deleteSelected = () => {
-    const ids = selectedThreads.map((t) => t.id)
+  // Kept separately from `confirming` so the list stays rendered during the close animation.
+  const [deleteTargets, setDeleteTargets] = React.useState<ReadonlyArray<Thread>>([])
+  const requestDelete = (targets: ReadonlyArray<Thread>) => {
+    if (targets.length === 0) return
+    setDeleteTargets(targets)
+    setConfirming(true)
+  }
+  const confirmDelete = () => {
+    const ids = deleteTargets.map((t) => t.id)
     setConfirming(false)
     if (ids.length === 0) return
     deleteThreads(ids)
     if (threadId && ids.includes(threadId)) void navigate({ to: '/' })
-    exitSelecting()
+    if (selectScope) exitSelecting()
+  }
+  // Single-thread delete confirms inline: the first click arms the button, the second deletes.
+  const [armedDeleteId, setArmedDeleteId] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (!armedDeleteId) return
+    const timer = setTimeout(() => setArmedDeleteId(null), 3000)
+    return () => clearTimeout(timer)
+  }, [armedDeleteId])
+  const deleteOne = (thread: Thread) => {
+    if (armedDeleteId !== thread.id) return setArmedDeleteId(thread.id)
+    setArmedDeleteId(null)
+    deleteThreads([thread.id])
+    if (thread.id === threadId) void navigate({ to: '/' })
   }
   const archiveSelected = () => {
     setThreadsArchived(
@@ -488,9 +509,9 @@ export function AppSidebar() {
   }
 
   const searchRef = React.useRef<HTMLInputElement>(null)
-  useHotkey(SHORTCUTS.newChat, newChat, { meta: { name: 'New chat' } })
+  useHotkey(appHotkeys['chat.new'], newChat)
   useHotkey(
-    SHORTCUTS.searchThreads,
+    appHotkeys['threads.search'],
     () => {
       // The search box is not rendered while the sidebar is collapsed to icons.
       if (isMobile) setOpenMobile(true)
@@ -500,10 +521,9 @@ export function AppSidebar() {
         searchRef.current?.select()
       })
     },
-    { meta: { name: 'Search conversations' } },
   )
-  const newChatShortcut = useShortcutLabel(SHORTCUTS.newChat)
-  const searchShortcut = useShortcutLabel(SHORTCUTS.searchThreads)
+  const newChatShortcut = useShortcutLabel('chat.new')
+  const searchShortcut = useShortcutLabel('threads.search')
 
   const newChatIn = (projectId: string) => {
     setProjectCollapsed(projectId, false)
@@ -530,7 +550,7 @@ export function AppSidebar() {
         aria-label={t.deleteSelected}
         title={t.deleteSelected}
         disabled={selectedCount === 0}
-        onClick={() => setConfirming(true)}
+        onClick={() => requestDelete(selectedThreads)}
       >
         <IconTrash />
       </button>
@@ -571,6 +591,7 @@ export function AppSidebar() {
           setDragId(thread.id)
         }}
         onDragEnd={endDrag}
+        onMouseLeave={() => armedDeleteId === thread.id && setArmedDeleteId(null)}
         className={cn(
           'animate-in fade-in slide-in-from-left-2 duration-150',
           dragId === thread.id && 'opacity-40',
@@ -633,14 +654,16 @@ export function AppSidebar() {
         {!checkable && renamingThreadId !== thread.id && (
           <SidebarMenuAction
             showOnHover
-            aria-label={t.deleteThread}
-            title={t.delete}
-            onClick={() => {
-              deleteThread(thread.id)
-              if (thread.id === threadId) void navigate({ to: '/' })
-            }}
+            aria-label={armedDeleteId === thread.id ? t.confirmDelete : t.deleteThread}
+            title={armedDeleteId === thread.id ? t.confirmDelete : t.delete}
+            className={cn(
+              armedDeleteId === thread.id &&
+                'bg-destructive/10 text-destructive! opacity-100 hover:bg-destructive/15',
+            )}
+            onClick={() => deleteOne(thread)}
+            onBlur={() => armedDeleteId === thread.id && setArmedDeleteId(null)}
           >
-            <IconTrash />
+            {armedDeleteId === thread.id ? <IconCheck /> : <IconTrash />}
           </SidebarMenuAction>
         )}
       </SidebarMenuItem>
@@ -1029,7 +1052,7 @@ export function AppSidebar() {
             </span>
             <div className="grid gap-1">
               <AlertDialogTitle>
-                {t.confirmTitle(selectedThreads.length)}
+                {t.confirmTitle(deleteTargets.length)}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {t.confirmBody}
@@ -1037,7 +1060,7 @@ export function AppSidebar() {
             </div>
           </div>
           <ul className="max-h-40 overflow-y-auto rounded-lg border bg-muted/40 p-1">
-            {selectedThreads.map((t) => (
+            {deleteTargets.map((t) => (
               <li
                 key={t.id}
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground"
@@ -1051,7 +1074,7 @@ export function AppSidebar() {
             <AlertDialogClose render={<Button variant="ghost" />}>{t.cancel}</AlertDialogClose>
             <Button
               className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={deleteSelected}
+              onClick={confirmDelete}
             >
               {t.delete}
             </Button>

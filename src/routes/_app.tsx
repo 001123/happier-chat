@@ -6,11 +6,13 @@ import { getCookie } from '@tanstack/react-start/server'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { ProviderOnboardingDialog } from '@/components/provider-onboarding'
+import { ShortcutsDialog } from '@/components/shortcuts-dialog'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { claimAccountData } from '@/lib/account-data'
 import { LEFT_SIDEBAR_COOKIE, readDisplaySettings } from '@/lib/display-settings'
 import { providersQueryOptions } from '@/lib/provider-store'
 import { migrateLocalProjects, projectsQueryOptions } from '@/lib/projects'
+import { appHotkeys } from '@/lib/shortcuts'
 import { syncLegacyThreads, threadsQueryOptions } from '@/lib/threads'
 import { getCurrentUser } from '@/server/auth.functions'
 
@@ -56,7 +58,7 @@ function AppLayout() {
   }, [])
 
   return (
-    <HotkeysProvider>
+    <HotkeysProvider appHotkeys={appHotkeys}>
       <SidebarProvider defaultOpen={sidebarOpen}>
         <AppSidebar />
         {/* min-w-0 lets wide tables scroll inside their box instead of widening the page. */}
@@ -64,6 +66,7 @@ function AppLayout() {
           <Outlet />
         </SidebarInset>
         <ProviderOnboardingDialog />
+        <ShortcutsDialog />
       </SidebarProvider>
     </HotkeysProvider>
   )

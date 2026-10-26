@@ -1,6 +1,16 @@
 import * as React from 'react'
-import { matchesKeyboardEvent } from '@tanstack/react-hotkeys'
-import { IconArrowBackUp, IconCheck, IconLoader2, IconPencil, IconPlayerPlay, IconX } from '@tabler/icons-react'
+import { Dialog } from '@base-ui/react/dialog'
+import { HotkeysProvider, matchesKeyboardEvent } from '@tanstack/react-hotkeys'
+import {
+  IconArrowBackUp,
+  IconCheck,
+  IconLoader2,
+  IconMaximize,
+  IconMinimize,
+  IconPencil,
+  IconPlayerPlay,
+  IconX,
+} from '@tabler/icons-react'
 import {
   CodeBlock,
   CodeBlockContainer,
@@ -29,6 +39,8 @@ const messages = defineMessages({
     loading: 'Đang tải runtime lần đầu…',
     empty: (print: string) => `Không có output. Thêm ${print} để in kết quả.`,
     returned: 'Giá trị trả về',
+    expand: 'Xem toàn màn hình',
+    collapse: 'Thu nhỏ',
   },
   en: {
     run: 'Run code',
@@ -42,6 +54,8 @@ const messages = defineMessages({
     loading: 'Loading the runtime for the first time…',
     empty: (print: string) => `No output. Add ${print} to print results.`,
     returned: 'Returned value',
+    expand: 'Expand',
+    collapse: 'Collapse',
   },
 })
 
@@ -65,6 +79,7 @@ function RunnableCodeBlock({ code, language, isIncomplete, runner }: CustomRende
   const [draft, setDraft] = React.useState<string | null>(null)
   const [editing, setEditing] = React.useState(false)
   const editorRef = React.useRef<HTMLTextAreaElement>(null)
+  const [expanded, setExpanded] = React.useState(false)
   const current = draft ?? code
   const modified = draft !== null && draft !== code
   const runLabel = `${t.run} (${runner.engine})`
@@ -93,6 +108,8 @@ function RunnableCodeBlock({ code, language, isIncomplete, runner }: CustomRende
       void run()
     } else if (event.key === 'Escape') {
       event.preventDefault()
+      // Leave editing first; a second Escape closes the expanded dialog.
+      event.stopPropagation()
       setEditing(false)
     } else if (event.key === 'Tab' && !event.shiftKey) {
       event.preventDefault()
@@ -144,11 +161,19 @@ function RunnableCodeBlock({ code, language, isIncomplete, runner }: CustomRende
       </button>
       <CodeBlockDownloadButton code={current} language={language} />
       <CodeBlockCopyButton code={current} />
+      <button
+        type="button"
+        aria-label={expanded ? t.collapse : t.expand}
+        title={expanded ? t.collapse : t.expand}
+        onClick={() => setExpanded(!expanded)}
+        className={ACTION_BUTTON}>
+        {expanded ? <IconMinimize aria-hidden size={14} /> : <IconMaximize aria-hidden size={14} />}
+      </button>
     </>
   )
 
-  return (
-    <div className="my-4" data-streamdown="runnable-code-block">
+  const body = (
+    <>
       {editing ? (
         <CodeBlockContainer className="my-0" language={language}>
           <CodeBlockHeader language={language} />
@@ -204,6 +229,29 @@ function RunnableCodeBlock({ code, language, isIncomplete, runner }: CustomRende
           </pre>
         </div>
       )}
+    </>
+  )
+
+  return (
+    <div className="my-4" data-streamdown="runnable-code-block">
+      {expanded ? (
+        // The live block moves into the dialog; keep a static copy here so the page does not jump.
+        <CodeBlock className="my-0" code={current} language={language} />
+      ) : (
+        body
+      )}
+      <Dialog.Root open={expanded} onOpenChange={setExpanded}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-sm" />
+          <Dialog.Popup className="fixed inset-2 z-50 mx-auto flex max-w-6xl flex-col overflow-auto rounded-2xl border bg-popover p-4 text-popover-foreground shadow-xl outline-hidden transition-all duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 sm:inset-6 [&_[data-streamdown=code-block-body]]:max-h-none! [&_[data-streamdown=code-block-body]]:text-base [&_textarea]:text-base">
+            <Dialog.Title className="sr-only">{language}</Dialog.Title>
+            {/* Only the dialog's own hotkeys fire while it is open. */}
+            <HotkeysProvider scope="code-block-dialog" exclusive>
+              {body}
+            </HotkeysProvider>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }

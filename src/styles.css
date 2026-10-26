@@ -335,6 +335,45 @@
   }
 }
 
+/* Explain lesson cursor: a slow pulse so it reads as a live presenter, not a static icon. */
+@keyframes pointer-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.04;
+  }
+}
+
+/* Simulated click when the cursor reaches a new cue. */
+@keyframes pointer-click {
+  0%,
+  100% {
+    scale: 1;
+  }
+  40% {
+    scale: 0.9;
+  }
+}
+
+/* Particles burst from the click point; --dx/--dy set per particle. */
+@keyframes pointer-particle {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+    scale: 0.4;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: var(--dx) var(--dy);
+    scale: 1;
+  }
+}
+
 @keyframes effort-knob-pop {
   0% {
     scale: 0.6;

@@ -7,6 +7,7 @@ import {
   IconCheck,
   IconChevronRight,
   IconContrast2,
+  IconKeyboard,
   IconLanguage,
   IconLogout,
   IconPalette,
@@ -18,12 +19,13 @@ import { ThemeSwitcher, useColorMode } from '@/components/theme-toggle'
 import { SidebarMenuButton, useSidebar } from '@/components/ui/sidebar'
 import { clearAccountData } from '@/lib/account-data'
 import { applyThemePreset, isPresetActive, previewThemePreset, themePresets, useCustomColors } from '@/lib/custom-colors'
+import { setShortcutsDialogOpen, useShortcutLabel } from '@/lib/shortcuts'
 import { logout } from '@/server/auth.functions'
 import { LOCALES, LOCALE_NAMES, defineMessages, isLocale, setLocale, useLocale, useMessages } from '@/lib/i18n'
 
 const messages = defineMessages({
-  vi: { account: 'Tài khoản', settings: 'Cài đặt', theme: 'Giao diện', themes: 'Chủ đề', customTheme: 'Tuỳ chỉnh', themeOptions: 'Tuỳ chọn', language: 'Ngôn ngữ', logout: 'Đăng xuất', confirmTitle: 'Đăng xuất?', confirmHint: 'Bạn sẽ cần đăng nhập lại để tiếp tục.', cancel: 'Huỷ' },
-  en: { account: 'Account', settings: 'Settings', theme: 'Appearance', themes: 'Themes', customTheme: 'Custom', themeOptions: 'Customize', language: 'Language', logout: 'Log out', confirmTitle: 'Log out?', confirmHint: "You'll need to sign in again to continue.", cancel: 'Cancel' },
+  vi: { account: 'Tài khoản', settings: 'Cài đặt', theme: 'Giao diện', themes: 'Chủ đề', customTheme: 'Tuỳ chỉnh', themeOptions: 'Tuỳ chọn', language: 'Ngôn ngữ', shortcuts: 'Phím tắt', logout: 'Đăng xuất', confirmTitle: 'Đăng xuất?', confirmHint: 'Bạn sẽ cần đăng nhập lại để tiếp tục.', cancel: 'Huỷ' },
+  en: { account: 'Account', settings: 'Settings', theme: 'Appearance', themes: 'Themes', customTheme: 'Custom', themeOptions: 'Customize', language: 'Language', shortcuts: 'Keyboard shortcuts', logout: 'Log out', confirmTitle: 'Log out?', confirmHint: "You'll need to sign in again to continue.", cancel: 'Cancel' },
 })
 
 const menuItem =
@@ -35,6 +37,7 @@ export function UserMenu() {
   const { state, isMobile } = useSidebar()
   const collapsed = state === 'collapsed' && !isMobile
   const [confirming, setConfirming] = React.useState(false)
+  const shortcutsShortcut = useShortcutLabel('help.shortcuts')
 
   async function onLogout() {
     await logout()
@@ -82,6 +85,11 @@ export function UserMenu() {
             </div>
             <ThemeSubmenu label={t.themes} customLabel={t.customTheme} optionsLabel={t.themeOptions} />
             <LanguageSubmenu label={t.language} />
+            <Menu.Item className={menuItem} onClick={() => setShortcutsDialogOpen(true)}>
+              <IconKeyboard />
+              <span className="flex-1">{t.shortcuts}</span>
+              <kbd className="font-sans text-xs text-muted-foreground">{shortcutsShortcut}</kbd>
+            </Menu.Item>
             <Menu.Separator className="-mx-1 my-1 h-px bg-border" />
             {confirming ? (
               <div className="flex flex-col px-2 pt-1.5 pb-1">

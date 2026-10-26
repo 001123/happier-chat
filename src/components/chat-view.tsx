@@ -97,7 +97,7 @@ import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
 import type { SpeakerStatus } from '@/lib/use-speaker'
 import { toggleReaction, useReactions } from '@/lib/reactions'
 import { hasThread, setThreadBusy, upsertThread, usePendingProject, useThread, useThreadsSynced } from '@/lib/threads'
-import { SHORTCUTS } from '@/lib/shortcuts'
+import { appHotkeys } from '@/lib/shortcuts'
 import { clearThread } from '@/server/threads.functions'
 import { useProjects } from '@/lib/projects'
 import {
@@ -107,13 +107,17 @@ import {
   reactionEmojis,
   reactToMessageDef,
   roleplayTurnDef,
+  explainDeckDef,
   sendEmailDef,
   setThemeDef,
+  showDrawingBoardDef,
   showMapDef,
   showQuizDef,
   webSearchDef,
 } from '@/lib/tools'
-import type { QuizInput, RoleplayInput } from '@/lib/tools'
+import type { DrawingBoardInput, ExplainDeckInput, QuizInput, RoleplayInput } from '@/lib/tools'
+import { DrawingBoard, DrawingBoardSkeleton } from '@/components/drawing-board'
+import { ExplainCard } from '@/components/explain-card'
 import { QuizCard, QuizCardSkeleton } from '@/components/quiz-card'
 import { ROLEPLAY_VOICES, RoleplayCard, RoleplayCardSkeleton } from '@/components/roleplay-card'
 import { renderUiDef, splitInlinePatches } from '@/lib/generative-ui'
@@ -132,6 +136,8 @@ const tools = clientTools(
   learnWordDef,
   showQuizDef,
   roleplayTurnDef,
+  showDrawingBoardDef,
+  explainDeckDef,
   renderUiDef,
 )
 
@@ -199,6 +205,8 @@ const copy = defineMessages({
       learn_word: 'Học từ vựng',
       show_quiz: 'Tạo quiz',
       roleplay_turn: 'Nhập vai',
+      show_drawing_board: 'Mở bảng vẽ',
+      explain_deck: 'Soạn bài giảng',
       render_ui: 'Dựng giao diện',
       execute_typescript: 'Chạy code',
     } as Record<string, string>,
@@ -214,6 +222,7 @@ const copy = defineMessages({
     retry: 'Thử lại',
     details: 'Chi tiết',
     edit: 'Sửa',
+    drawing: 'Hình vẽ',
     editQuestion: 'Sửa câu hỏi',
     cancel: 'Huỷ',
     copied: 'Đã sao chép',
@@ -260,6 +269,8 @@ const copy = defineMessages({
       learn_word: 'Learn word',
       show_quiz: 'Build quiz',
       roleplay_turn: 'Role-play',
+      show_drawing_board: 'Open drawing board',
+      explain_deck: 'Build lesson',
       render_ui: 'Build interface',
       execute_typescript: 'Run code',
     } as Record<string, string>,
@@ -275,6 +286,7 @@ const copy = defineMessages({
     retry: 'Retry',
     details: 'Details',
     edit: 'Edit',
+    drawing: 'Drawing',
     editQuestion: 'Edit question',
     cancel: 'Cancel',
     copied: 'Copied',
@@ -351,6 +363,26 @@ function getText(message: UIMessage) {
   return message.parts
     .map((part) => (part.type === 'text' ? part.content : ''))
     .join('')
+}
+
+function imageSources(message: UIMessage) {
+  return message.parts.flatMap((part) => {
+    if (part.type !== 'image') return []
+    // A provider file handle is an opaque id the browser cannot load.
+    if (part.source.type === 'url') return [part.source.value]
+    if (part.source.type === 'data') return [`data:${part.source.mimeType};base64,${part.source.value}`]
+    return []
+  })
+}
+
+/** The user's latest image in the thread, so a new drawing board can build on it. */
+function lastUserImage(messages: ReadonlyArray<UIMessage>) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role !== 'user') continue
+    const image = imageSources(messages[i]!).at(-1)
+    if (image) return image
+  }
+  return undefined
 }
 
 function botReaction(messages: ReadonlyArray<UIMessage>, index: number) {
@@ -495,6 +527,8 @@ export function ChatView({ threadId }: { threadId: string }) {
     wasLoading.current = isLoading
     const last = messages.at(-1)
     if (!finished || !autoRead || error || last?.role !== 'assistant') return
+    // A lesson card narrates itself.
+    if (last.parts.some((p) => p.type === 'tool-call' && p.name === 'explain_deck')) return
     const turn = last.parts.find((p) => p.type === 'tool-call' && p.name === 'roleplay_turn')
     const roleplay = turn?.type === 'tool-call' ? (turn.input as RoleplayInput | undefined) : undefined
     if (roleplay?.line) {
@@ -524,7 +558,7 @@ export function ChatView({ threadId }: { threadId: string }) {
   })
 
   useHotkey(
-    'Escape',
+    appHotkeys['chat.stop'],
     () => {
       // Esc also closes menus and dialogs; leave the key to them when one is open.
       if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return
@@ -534,12 +568,11 @@ export function ChatView({ threadId }: { threadId: string }) {
       enabled: isLoading || interrupts.length > 0,
       preventDefault: false,
       stopPropagation: false,
-      meta: { name: 'Stop generating' },
     },
   )
   const focusComposer = () => document.querySelector<HTMLTextAreaElement>('textarea[data-composer]')?.focus()
-  useHotkey(SHORTCUTS.focusComposer, focusComposer, { meta: { name: 'Focus message box' } })
-  useHotkey(SHORTCUTS.focusComposerAlt, focusComposer, { meta: { name: 'Focus message box' } })
+  useHotkey(appHotkeys['composer.focus'], focusComposer)
+  useHotkey(appHotkeys['composer.focusAlt'], focusComposer)
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   async function editMessage(index: number, text: string) {
@@ -717,11 +750,24 @@ export function ChatView({ threadId }: { threadId: string }) {
                               ) : (
                               <div className="group/user flex w-full items-center justify-end gap-2">
                                 <div data-print-exclude className="flex shrink-0 items-center transition-opacity pointer-fine:opacity-0 group-hover/user:opacity-100 focus-within:opacity-100">
-                                  <EditButton onClick={() => setEditingId(message.id)} />
+                                  {/* Editing resends text only, so it would drop the images. */}
+                                  {imageSources(message).length === 0 && <EditButton onClick={() => setEditingId(message.id)} />}
                                   <CopyButton text={getText(message)} />
                                 </div>
-                                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-border bg-user-bubble px-4 py-2.5 text-chat leading-relaxed shadow-xs">
-                                  {getText(message)}
+                                <div className="flex max-w-[85%] flex-col items-end gap-2">
+                                  {imageSources(message).map((src, i) => (
+                                    <img
+                                      key={i}
+                                      src={src}
+                                      alt={t.drawing}
+                                      className="w-56 rounded-2xl rounded-br-md border border-border shadow-xs"
+                                    />
+                                  ))}
+                                  {getText(message) && (
+                                    <div className="whitespace-pre-wrap rounded-2xl rounded-br-md border border-border bg-user-bubble px-4 py-2.5 text-chat leading-relaxed shadow-xs">
+                                      {getText(message)}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               )}
@@ -872,6 +918,46 @@ export function ChatView({ threadId }: { threadId: string }) {
                                   active={!isLoading && message === messages.at(-1)}
                                   speaker={speaker}
                                   onReply={(content) => void sendMessage(content)}
+                                />
+                              )
+                            })}
+                            {message.parts.map((part) => {
+                              if (part.type !== 'tool-call' || part.name !== 'show_drawing_board') return null
+                              const input = part.input ?? (part.arguments ? parsePartialJSON(part.arguments) : undefined)
+                              if (!input?.prompt) return part.state === 'error' ? null : <DrawingBoardSkeleton key={part.id} />
+                              return (
+                                <DrawingBoard
+                                  key={part.id}
+                                  input={input as Partial<DrawingBoardInput>}
+                                  active={!isLoading && message === messages.at(-1)}
+                                  previous={lastUserImage(messages)}
+                                  visionSupported={activeModel?.info ? activeModel.info.input.includes('image') : null}
+                                  onSend={(text, png) =>
+                                    void sendMessage({
+                                      content: [
+                                        { type: 'text', content: text },
+                                        { type: 'image', source: { type: 'data', value: png, mimeType: 'image/png' } },
+                                      ],
+                                    })
+                                  }
+                                />
+                              )
+                            })}
+                            {message.parts.map((part) => {
+                              if (part.type !== 'tool-call' || part.name !== 'explain_deck') return null
+                              const input = part.input ?? (part.arguments ? parsePartialJSON(part.arguments) : undefined)
+                              if (!input && part.state === 'error') return null
+                              // A deck the server rejected (broken diagram) is replaced by the model's corrected call.
+                              const deckResult = part.output ?? findResult(message, part.id)
+                              const deckOutput = typeof deckResult === 'string' ? safeJson(deckResult) : deckResult
+                              if (deckOutput?.shown === false) return null
+                              return (
+                                <ExplainCard
+                                  key={part.id}
+                                  id={part.id}
+                                  input={(input ?? {}) as Partial<ExplainDeckInput>}
+                                  streaming={part.input === undefined && part.state !== 'error'}
+                                  speaker={speaker}
                                 />
                               )
                             })}

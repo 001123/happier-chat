@@ -19,6 +19,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { appHotkeys } from "@/lib/shortcuts"
 import {
   Tooltip,
   TooltipContent,
@@ -31,7 +32,6 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
-const SIDEBAR_KEYBOARD_SHORTCUT = "Mod+B"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -90,9 +90,7 @@ function SidebarProvider({
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
 
-  useHotkey(SIDEBAR_KEYBOARD_SHORTCUT, toggleSidebar, {
-    meta: { name: "Toggle sidebar" },
-  })
+  useHotkey(appHotkeys["sidebar.toggle"], toggleSidebar)
 
   const state = open ? "expanded" : "collapsed"
 

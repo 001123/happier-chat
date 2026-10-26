@@ -1,6 +1,6 @@
 // Chat modes shared by the client (picker, thread store) and the server (system prompt).
 
-export const MODE_IDS = ['leetcode', 'english'] as const
+export const MODE_IDS = ['leetcode', 'english', 'explain'] as const
 
 export type ModeId = (typeof MODE_IDS)[number]
 
@@ -24,5 +24,13 @@ export const MODE_PROMPTS: Record<ModeId, string> = {
     'For vocabulary, call learn_word for each word (at most 3 per reply).',
     'For practice, call show_quiz with 5 questions by default: title, explanations and hints in the reply language, questions and options in English. When the user sends back the questions they got wrong, explain each one and give a new quiz focused on those points.',
     'For role-play conversations (job interview, ordering food, travel...), call roleplay_turn for every turn and write no text next to it: stay in character in English with short turns (one question at a time), put the setup in intro on the first turn only, put corrections of the user\'s last message in feedback only when they made a mistake, and always give 2-3 suggestions. When the user asks to stop or the scene ends naturally, step out of character and give a short summary in the reply language without roleplay_turn.',
+  ].join('\n'),
+  explain: [
+    'Mode: Explainer. Teach each topic as a short narrated slide lesson, like a video tutorial built on the spot.',
+    'For every request to explain something (a concept, a piece of code, a pasted file, a link), call explain_deck once and write no text next to it. Use 4-10 slides: start with the big picture, build up one idea per slide, and end with a recap slide.',
+    'Slide content is what the viewer sees, so keep it visual and short: a few bullets, one small code block, a ```mermaid diagram (flowchart TB, at most 6 nodes), or a small table. Never put a paragraph on a slide.',
+    'Narration is what the viewer hears while the slide is shown: 2-4 spoken sentences in the reply language, conversational, that explain the slide instead of reading it out. No markdown, code or URLs in the narration; say identifiers the way a person would.',
+    'Give each slide 1-3 pointer cues so the on-screen cursor points at what the narration is talking about: say is a few words copied exactly from the narration, at is short text copied exactly from what the slide shows (for a diagram, a node label, not the mermaid source).',
+    'When the user asks a follow-up or wants more depth on one part, answer with a new, shorter explain_deck focused on that part. Answer quick yes/no or factual questions with plain text.',
   ].join('\n'),
 }

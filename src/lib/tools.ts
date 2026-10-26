@@ -234,3 +234,57 @@ export const roleplayTurnDef = toolDefinition({
   inputSchema: roleplayInputSchema,
   outputSchema: z.object({ shown: z.boolean() }),
 })
+
+export const drawingBoardInputSchema = z.object({
+  prompt: z
+    .string()
+    .meta({ description: 'One short line in the reply language shown above the board, e.g. "Vẽ gì đó đi, tôi sẽ đoán!" or "Vẽ thêm chi tiết nhé"' }),
+})
+export type DrawingBoardInput = z.infer<typeof drawingBoardInputSchema>
+
+export const showDrawingBoardDef = toolDefinition({
+  name: 'show_drawing_board',
+  description:
+    'Display a drawing board (pen colors, sizes, eraser, undo) where the user sketches something and sends it back to you as an image. Use it when the user wants to draw for you to guess (Pictionary) or wants to show you a sketch. The board is the reply, so do not write any text next to it.',
+  inputSchema: drawingBoardInputSchema,
+  outputSchema: z.object({ shown: z.boolean() }),
+})
+
+export const explainDeckInputSchema = z.object({
+  title: z.string().meta({ description: 'Lesson title in the reply language, e.g. "React useEffect hoạt động thế nào"' }),
+  slides: z
+    .array(
+      z.object({
+        title: z.string().meta({ description: 'Short slide heading in the reply language' }),
+        content: z
+          .string()
+          .meta({ description: 'What the slide shows, as Markdown: a few bullets, one small fenced code block, a ```mermaid diagram, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together.' }),
+        narration: z
+          .string()
+          .meta({ description: 'What the narrator says while this slide is shown: 2-4 spoken sentences in the reply language, plain text without markdown, code or URLs.' }),
+        pointer: z
+          .array(
+            z.object({
+              say: z.string().meta({ description: 'A few words copied exactly from this slide\'s narration; the cursor moves when the narrator reaches them.' }),
+              at: z
+                .string()
+                .meta({ description: 'Short text copied exactly from what the slide shows (a bullet phrase, a code token, a table cell, or a diagram node label, never mermaid source) for the cursor to point at.' }),
+            }),
+          )
+          .max(4)
+          .optional()
+          .meta({ description: '1-3 cues, in narration order, that move an on-screen cursor to the thing being talked about, like a presenter pointing.' }),
+      }),
+    )
+    .min(2)
+    .max(12),
+})
+export type ExplainDeckInput = z.infer<typeof explainDeckInputSchema>
+
+export const explainDeckDef = toolDefinition({
+  name: 'explain_deck',
+  description:
+    'Display a narrated slide lesson: slides appear as they stream in, and a player reads each slide\'s narration aloud and moves to the next slide on its own (play/pause, prev/next). Use it to explain a concept, a piece of code, a file or a link step by step. The lesson is the reply, so do not write any text next to it. If it returns issues, call it again with the whole deck fixed.',
+  inputSchema: explainDeckInputSchema,
+  outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()) }),
+})

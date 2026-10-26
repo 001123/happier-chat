@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { IconBrandLeetcode, IconLanguage, IconX } from '@tabler/icons-react'
+import { IconBrandLeetcode, IconChalkboard, IconLanguage, IconX } from '@tabler/icons-react'
 import type { Icon } from '@tabler/icons-react'
 import { cn } from 'cn'
 
@@ -11,6 +11,7 @@ import { setThreadMode, usePendingMode, useThread } from '@/lib/threads'
 const MODE_ICONS: Record<ModeId, Icon> = {
   leetcode: IconBrandLeetcode,
   english: IconLanguage,
+  explain: IconChalkboard,
 }
 
 const messages = defineMessages({
@@ -39,6 +40,16 @@ const messages = defineMessages({
           'Luyện hội thoại phỏng vấn xin việc',
         ],
       },
+      explain: {
+        name: 'Giải thích bằng slide',
+        description: 'Bài giảng slide có lời đọc, tạo ngay khi bạn hỏi',
+        starters: [
+          'Giải thích Event Loop trong JavaScript',
+          'React useEffect chạy khi nào?',
+          'Git rebase khác merge thế nào?',
+          'Giải thích cách HTTPS bảo mật kết nối',
+        ],
+      },
     },
   },
   en: {
@@ -64,6 +75,16 @@ const messages = defineMessages({
           'Fix this: I has went to school yesterday',
           'Give me a quiz on the present perfect',
           'Practise a job interview conversation',
+        ],
+      },
+      explain: {
+        name: 'Slide explainer',
+        description: 'Narrated slide lessons, built the moment you ask',
+        starters: [
+          'Explain the JavaScript event loop',
+          'When does React useEffect run?',
+          'How is git rebase different from merge?',
+          'Explain how HTTPS secures a connection',
         ],
       },
     },

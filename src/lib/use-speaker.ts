@@ -71,9 +71,26 @@ function toChunks(content: string | Array<SpeechSegment>) {
           .map((text) => ({ text: text.trim() }))
           .filter((s) => s.text)
       : content
-  return segments.flatMap((segment, i) =>
-    chunkText(segment.text, i === 0).map((text) => ({ text, element: segment.element })),
-  )
+  return segments.flatMap((segment, i) => {
+    let cursor = 0
+    return chunkText(segment.text, i === 0).map((text) => {
+      // Where the chunk starts in its segment's text, for progress callbacks.
+      const offset = Math.max(segment.text.indexOf(text, cursor), cursor)
+      cursor = offset + text.length
+      return { text, element: segment.element, offset }
+    })
+  })
+}
+
+/** Start of each aligned word in the chunk text, matched in order. */
+function wordOffsets(text: string, words: Array<string>) {
+  let cursor = 0
+  return words.map((word) => {
+    const index = text.indexOf(word.trim(), cursor)
+    if (index < 0) return cursor
+    cursor = index + word.trim().length
+    return index
+  })
 }
 
 const messages = defineMessages({
@@ -167,7 +184,8 @@ function wordRanges(element: HTMLElement, words: Array<string>, cursor: { value:
   })
 }
 
-function trackWords(audio: HTMLAudioElement, ranges: Array<Range | null>, startSeconds: Array<number>) {
+/** Calls onWord with the index of the word being played (-1 before the first one) each time it changes. */
+function trackWords(audio: HTMLAudioElement, startSeconds: Array<number>, onWord: (index: number) => void) {
   let frame = 0
   let current = -1
   const tick = () => {
@@ -175,17 +193,17 @@ function trackWords(audio: HTMLAudioElement, ranges: Array<Range | null>, startS
     while (index + 1 < startSeconds.length && startSeconds[index + 1]! <= audio.currentTime) index++
     if (index !== current) {
       current = index
-      const range = ranges[index]
-      if (range) CSS.highlights.set(WORD_HIGHLIGHT, new Highlight(range))
-      else CSS.highlights.delete(WORD_HIGHLIGHT)
+      onWord(index)
     }
     frame = requestAnimationFrame(tick)
   }
   frame = requestAnimationFrame(tick)
-  return () => {
-    cancelAnimationFrame(frame)
-    CSS.highlights.delete(WORD_HIGHLIGHT)
-  }
+  return () => cancelAnimationFrame(frame)
+}
+
+export type SpeakOptions = {
+  /** Called with the character offset reached in the current segment's text, per word when the voice gives timings. */
+  onProgress?: (offset: number) => void
 }
 
 export type SpeakerStatus = 'idle' | 'loading' | 'playing'
@@ -205,11 +223,13 @@ export function useSpeaker() {
     setStatus('idle')
   }, [])
 
+  /** Resolves true when the content was read to the end, false when it was stopped, replaced or failed. */
   const speak = React.useCallback(
     async (
       id: string,
       content: string | Array<SpeechSegment>,
       overrides?: Partial<SpeechSettings>,
+      { onProgress }: SpeakOptions = {},
     ) => {
       runRef.current?.abort()
       const run = new AbortController()
@@ -217,7 +237,10 @@ export function useSpeaker() {
       const { signal } = run
       const chunks = toChunks(content)
       setError(undefined)
-      if (chunks.length === 0) return stop()
+      if (chunks.length === 0) {
+        stop()
+        return false
+      }
 
       const { voice, speed, pitch } = { ...settings, ...overrides }
       const audio = (audioRef.current ??= new Audio())
@@ -226,7 +249,7 @@ export function useSpeaker() {
       const pending: Array<Promise<TTSResult>> = []
       const request = (i: number) => {
         pending[i] ??= synthesize(
-          { text: chunks[i]!.text, voice, speed, modelOptions: { pitch }, timestamps: canHighlightWords },
+          { text: chunks[i]!.text, voice, speed, modelOptions: { pitch }, timestamps: canHighlightWords || Boolean(onProgress) },
           signal,
         )
         pending[i].catch(() => {})
@@ -234,10 +257,11 @@ export function useSpeaker() {
 
       setActiveId(id)
       let highlighted: HTMLElement | undefined
+      let finished = false
       try {
         for (let i = 0; i < chunks.length; i++) {
           for (let j = i; j < Math.min(i + PREFETCH, chunks.length); j++) request(j)
-          const { element } = chunks[i]!
+          const { element, text, offset } = chunks[i]!
           if (element !== highlighted) {
             highlighted?.removeAttribute('data-speaking')
             element?.setAttribute('data-speaking', '')
@@ -246,19 +270,33 @@ export function useSpeaker() {
           setStatus('loading')
           const result = await pending[i]!
           setStatus('playing')
+          onProgress?.(offset)
           let stopTracking: (() => void) | undefined
-          if (element && result.alignment && canHighlightWords) {
-            const cursor = cursors.get(element) ?? { value: 0 }
-            cursors.set(element, cursor)
-            const ranges = wordRanges(element, result.alignment.texts, cursor)
-            stopTracking = trackWords(audio, ranges, result.alignment.startSeconds)
+          let ranges: Array<Range | null> | undefined
+          if (result.alignment) {
+            if (element && canHighlightWords) {
+              const cursor = cursors.get(element) ?? { value: 0 }
+              cursors.set(element, cursor)
+              ranges = wordRanges(element, result.alignment.texts, cursor)
+            }
+            const offsets = onProgress && wordOffsets(text, result.alignment.texts)
+            if (ranges || offsets) {
+              stopTracking = trackWords(audio, result.alignment.startSeconds, (index) => {
+                const range = ranges?.[index]
+                if (range) CSS.highlights.set(WORD_HIGHLIGHT, new Highlight(range))
+                else if (ranges) CSS.highlights.delete(WORD_HIGHLIGHT)
+                if (offsets && index >= 0) onProgress(offset + offsets[index]!)
+              })
+            }
           }
           try {
             await play(audio, result, signal)
           } finally {
             stopTracking?.()
+            if (ranges) CSS.highlights.delete(WORD_HIGHLIGHT)
           }
         }
+        finished = true
       } catch (e) {
         if (!signal.aborted) setError(e as Error)
       } finally {
@@ -269,6 +307,7 @@ export function useSpeaker() {
           setStatus('idle')
         }
       }
+      return finished
     },
     [settings, stop],
   )
