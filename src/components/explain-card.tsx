@@ -174,7 +174,7 @@ export function ExplainCard({
   const picked = answers[index]
   // The explanation opens with the verdict, read aloud like a teacher reacting to the answer.
   const verdict = quiz && picked !== undefined ? (picked === quiz.answer ? t.correct : t.wrong) : ''
-  const caption = (part === 1 ? [verdict, quiz?.explanation].filter(Boolean).join(' ') : slide?.narration) ?? ''
+  const caption = (part === 1 ? [verdict, quiz?.explanation?.replace(/`/g, '')].filter(Boolean).join(' ') : slide?.narration) ?? ''
   const speechId = `${id}:${index}:${part}`
   const status = speaker.activeId === speechId ? speaker.status : 'idle'
 
@@ -696,12 +696,27 @@ function SlideCards({ cards }: { cards: Array<Partial<Card> | undefined> }) {
       {shown.map((card, i) => (
         <div key={i} data-build data-build-label={card.title} className="flex flex-col gap-1.5 rounded-xl border border-border bg-muted/30 p-4">
           <p className="font-semibold">
-            {card.title} {card.emoji}
+            <InlineCode text={card.title} /> {card.emoji}
           </p>
-          <p className="text-sm leading-relaxed text-muted-foreground">{card.text}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            <InlineCode text={card.text} />
+          </p>
         </div>
       ))}
     </div>
+  )
+}
+
+/** Short model text with `code` spans, which the quiz and cards render without a full Markdown pass. */
+function InlineCode({ text }: { text: string | undefined }) {
+  return (text ?? '').split(/(`[^`\n]+`)/).map((part, i) =>
+    part.length > 2 && part.startsWith('`') && part.endsWith('`') ? (
+      <code key={i} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em]">
+        {part.slice(1, -1)}
+      </code>
+    ) : (
+      part
+    ),
   )
 }
 
@@ -738,7 +753,9 @@ function SlideQuiz({
       >
         {labels.yourTurn}
       </span>
-      <p className="font-semibold text-balance">{quiz.question}</p>
+      <p className="font-semibold text-balance">
+        <InlineCode text={quiz.question} />
+      </p>
       <div className="flex flex-col gap-2">
         {(quiz.options ?? []).map((option, i) => {
           const state = !answered ? 'idle' : i === quiz.answer ? 'right' : i === picked ? 'wrong' : 'dim'
@@ -766,7 +783,9 @@ function SlideQuiz({
               >
                 {LETTERS[i]}
               </span>
-              {option}
+              <span className="min-w-0">
+                <InlineCode text={option} />
+              </span>
             </button>
           )
         })}
@@ -783,7 +802,7 @@ function SlideQuiz({
             >
               {picked === quiz.answer ? labels.correct : labels.wrong}
             </span>{' '}
-            {quiz.explanation}
+            <InlineCode text={quiz.explanation} />
           </p>
           {onNext && (
             <Button size="sm" className="self-end" onClick={onNext}>
@@ -809,6 +828,7 @@ function useIsFullscreen(ref: React.RefObject<HTMLElement | null>) {
 }
 
 const TOKEN = /[\p{L}\p{N}_]{2,}/gu
+const SENTENCE_BREAK = /[.!?;:…]/
 const tokens = (text: string) => new Set(text.toLowerCase().match(TOKEN) ?? [])
 // Blocks a cue can land on when its text is not copied exactly: bullets, cells, code lines, diagram labels.
 // Streamdown draws each line of a code block as a span in its code element, numbered with CSS.
@@ -894,8 +914,10 @@ function cueStart(narration: string, say: string, from = 0) {
     let next = wanted.indexOf(words[i]![0])
     if (next < 0) continue
     let matched = 0
-    // A small gap is fine (the narration adds a word or drops one), the order is not.
+    // A small gap is fine (the narration adds a word or drops one), the order is not, and neither is a sentence
+    // break: "như sau. … gửi cookie" is two thoughts, not the label "lần sau gửi lại cookie".
     for (let w = i; w < Math.min(words.length, i + wanted.length * 2) && next < wanted.length; w++) {
+      if (w > i && SENTENCE_BREAK.test(lower.slice(words[w - 1]!.index, words[w]!.index))) break
       const at = wanted.indexOf(words[w]![0], next)
       if (at < 0) continue
       matched++
