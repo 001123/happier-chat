@@ -124,9 +124,11 @@ function synthesize(input: SpeechGenerateInput, signal: AbortSignal) {
   })
 }
 
-function play(audio: HTMLAudioElement, result: TTSResult, signal: AbortSignal) {
+function play(audio: HTMLAudioElement, result: TTSResult, signal: AbortSignal, rate: number) {
   return new Promise<void>((resolve, reject) => {
     audio.src = `data:${result.contentType ?? 'audio/mpeg'};base64,${result.audio}`
+    // Loading a new source resets the rate to the default one.
+    audio.defaultPlaybackRate = audio.playbackRate = rate
     const cleanup = () => {
       audio.onended = audio.onerror = null
       signal.removeEventListener('abort', onAbort)
@@ -184,6 +186,25 @@ function wordRanges(element: HTMLElement, words: Array<string>, cursor: { value:
   })
 }
 
+/** Without word timings, estimates the word being read from how far the audio has played; calls onOffset with its start. */
+function trackEstimatedWords(audio: HTMLAudioElement, text: string, onOffset: (offset: number) => void) {
+  const starts = Array.from(text.matchAll(/\S+/g), (m) => m.index)
+  let frame = 0
+  let current = -1
+  const tick = () => {
+    if (starts.length && Number.isFinite(audio.duration) && audio.duration > 0) {
+      const index = Math.min(starts.length - 1, Math.floor((audio.currentTime / audio.duration) * starts.length))
+      if (index !== current) {
+        current = index
+        onOffset(starts[index]!)
+      }
+    }
+    frame = requestAnimationFrame(tick)
+  }
+  frame = requestAnimationFrame(tick)
+  return () => cancelAnimationFrame(frame)
+}
+
 /** Calls onWord with the index of the word being played (-1 before the first one) each time it changes. */
 function trackWords(audio: HTMLAudioElement, startSeconds: Array<number>, onWord: (index: number) => void) {
   let frame = 0
@@ -204,6 +225,10 @@ function trackWords(audio: HTMLAudioElement, startSeconds: Array<number>, onWord
 export type SpeakOptions = {
   /** Called with the character offset reached in the current segment's text, per word when the voice gives timings. */
   onProgress?: (offset: number) => void
+  /** Playback speed of the audio, applied without synthesizing again; change it mid-read with `setPlaybackRate`. */
+  playbackRate?: number
+  /** Loudness of the audio from 0 to 1; change it mid-read with `setVolume`. */
+  volume?: number
 }
 
 export type SpeakerStatus = 'idle' | 'loading' | 'playing'
@@ -212,6 +237,7 @@ export function useSpeaker() {
   const settings = useSpeechSettings()
   const runRef = React.useRef<AbortController | null>(null)
   const audioRef = React.useRef<HTMLAudioElement | null>(null)
+  const rateRef = React.useRef(1)
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [status, setStatus] = React.useState<SpeakerStatus>('idle')
   const [error, setError] = React.useState<Error | undefined>()
@@ -229,9 +255,10 @@ export function useSpeaker() {
       id: string,
       content: string | Array<SpeechSegment>,
       overrides?: Partial<SpeechSettings>,
-      { onProgress }: SpeakOptions = {},
+      { onProgress, playbackRate = 1, volume = 1 }: SpeakOptions = {},
     ) => {
       runRef.current?.abort()
+      rateRef.current = playbackRate
       const run = new AbortController()
       runRef.current = run
       const { signal } = run
@@ -244,6 +271,8 @@ export function useSpeaker() {
 
       const { voice, speed, pitch } = { ...settings, ...overrides }
       const audio = (audioRef.current ??= new Audio())
+      // The element is shared, so a read that sets no volume must not inherit the last one's; a new source keeps it.
+      audio.volume = volume
       const canHighlightWords = typeof CSS !== 'undefined' && 'highlights' in CSS
       const cursors = new Map<HTMLElement, { value: number }>()
       const pending: Array<Promise<TTSResult>> = []
@@ -288,9 +317,12 @@ export function useSpeaker() {
                 if (offsets && index >= 0) onProgress(offset + offsets[index]!)
               })
             }
+          } else if (onProgress) {
+            // Without timings progress would only move once per chunk, and everything tied to it would jump.
+            stopTracking = trackEstimatedWords(audio, text, (start) => onProgress(offset + start))
           }
           try {
-            await play(audio, result, signal)
+            await play(audio, result, signal, rateRef.current)
           } finally {
             stopTracking?.()
             if (ranges) CSS.highlights.delete(WORD_HIGHLIGHT)
@@ -312,7 +344,18 @@ export function useSpeaker() {
     [settings, stop],
   )
 
+  /** Changes the speed of the read in progress, including the chunk playing now. */
+  const setPlaybackRate = React.useCallback((rate: number) => {
+    rateRef.current = rate
+    if (runRef.current && audioRef.current) audioRef.current.playbackRate = rate
+  }, [])
+
+  /** Changes the loudness of the read in progress. */
+  const setVolume = React.useCallback((volume: number) => {
+    if (runRef.current && audioRef.current) audioRef.current.volume = volume
+  }, [])
+
   React.useEffect(() => () => runRef.current?.abort(), [])
 
-  return { speak, stop, activeId, status, error }
+  return { speak, stop, setPlaybackRate, setVolume, activeId, status, error }
 }

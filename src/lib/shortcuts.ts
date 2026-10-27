@@ -13,6 +13,11 @@ export const appHotkeys = defineAppHotkeys({
   'composer.focusAlt': { hotkey: 'Shift+Escape', meta: { name: 'Focus message box' } },
   'chat.stop': { hotkey: 'Escape', meta: { name: 'Stop generating' } },
   'help.shortcuts': { hotkey: 'Mod+/', meta: { name: 'Keyboard shortcuts' } },
+  // Lesson player keys work while focus is inside a slide deck, like a video player.
+  'lesson.playPause': { hotkey: 'Space', meta: { name: 'Play or pause the lesson' } },
+  'lesson.prev': { hotkey: 'ArrowLeft', meta: { name: 'Previous slide' } },
+  'lesson.next': { hotkey: 'ArrowRight', meta: { name: 'Next slide' } },
+  'lesson.fullscreen': { hotkey: 'F', meta: { name: 'Toggle lesson full screen' } },
 })
 
 declare module '@tanstack/react-hotkeys' {

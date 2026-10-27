@@ -8,6 +8,33 @@ export function isModeId(value: unknown): value is ModeId {
   return typeof value === 'string' && (MODE_IDS as ReadonlyArray<string>).includes(value)
 }
 
+/** How the slide explainer teaches: depth, length and tone of its lessons. */
+export const EXPLAIN_STYLE_IDS = ['simple', 'standard', 'practical', 'fun', 'deep', 'tldr'] as const
+
+export type ExplainStyleId = (typeof EXPLAIN_STYLE_IDS)[number]
+
+export const DEFAULT_EXPLAIN_STYLE: ExplainStyleId = 'simple'
+
+export function isExplainStyleId(value: unknown): value is ExplainStyleId {
+  return typeof value === 'string' && (EXPLAIN_STYLE_IDS as ReadonlyArray<string>).includes(value)
+}
+
+/** Added right after the explain mode prompt; each one overrides its slide count and structure. */
+export const EXPLAIN_STYLE_PROMPTS: Record<ExplainStyleId, string> = {
+  simple:
+    'Lesson style: simple. Teach a complete beginner: everyday words, define each technical term the first time it appears, one small step per slide, and an everyday analogy for the main idea. Use 4-8 slides.',
+  standard:
+    'Lesson style: standard. A clear, well-rounded lesson for a viewer with some background: what it is, how it works, when to use it, and one worked example. Use 6-10 slides.',
+  practical:
+    'Lesson style: practical. Teach through concrete examples: put a small, realistic code or usage example on most slides and keep theory to what the examples need. Add a slide of common mistakes before the recap. Use 5-8 slides.',
+  fun:
+    "Lesson style: fun. Keep every fact exactly right, but make the narration funny: playful analogies, light sarcasm and a joke or two per slide, never at the viewer's expense. Slide content stays clear and short. Use 5-8 slides.",
+  deep:
+    'Lesson style: deep dive. Teach an experienced viewer at maximum depth: internals and what happens under the hood, down to memory and bytes where it applies, plus trade-offs, edge cases and performance. Skip beginner analogies. Use 10-14 slides with two quiz slides.',
+  tldr:
+    'Lesson style: TL;DR. Only the essentials, for a viewer in a hurry: no title slide and no quiz, go straight to the key idea, and end with a one-slide summary. Use 3-4 slides with 1-2 sentences of narration each.',
+}
+
 /** System prompt added for each mode, after the general rules and before custom instructions. */
 export const MODE_PROMPTS: Record<ModeId, string> = {
   leetcode: [
@@ -27,10 +54,12 @@ export const MODE_PROMPTS: Record<ModeId, string> = {
   ].join('\n'),
   explain: [
     'Mode: Explainer. Teach each topic as a short narrated slide lesson, like a video tutorial built on the spot.',
-    'For every request to explain something (a concept, a piece of code, a pasted file, a link), call explain_deck once and write no text next to it. Use 4-10 slides: start with the big picture, build up one idea per slide, and end with a recap slide.',
+    'For every request to explain something (a concept, a piece of code, a pasted file, a link), call explain_deck once and write no text next to it. Use 4-10 slides: open with a title slide, build up one idea per slide, check understanding with one quiz slide near the end, and end with a recap slide.',
+    'Pick a layout per slide and vary them: title for the opening (a big heading, content is a one-line subtitle); cards for 2-4 parallel ideas (pillars, steps, pros and cons), each an emoji, a 1-3 word title and one sentence, with the narration walking through them in order; quiz for one multiple-choice question about what was just taught, where the narration sets it up and invites the viewer to pick an answer (the player waits for it), and explanation is read once they answer; content (the default) for everything else.',
     'Slide content is what the viewer sees, so keep it visual and short: a few bullets, one small code block, a ```mermaid diagram (flowchart TB, at most 6 nodes), or a small table. Never put a paragraph on a slide.',
     'Narration is what the viewer hears while the slide is shown: 2-4 spoken sentences in the reply language, conversational, that explain the slide instead of reading it out. No markdown, code or URLs in the narration; say identifiers the way a person would.',
-    'Give each slide 1-3 pointer cues so the on-screen cursor points at what the narration is talking about: say is a few words copied exactly from the narration, at is short text copied exactly from what the slide shows (for a diagram, a node label, not the mermaid source).',
+    'Give each slide 1-3 pointer cues so the on-screen cursor points at what the narration is talking about: say is a few words copied exactly from the narration, at is short text copied exactly from what the slide shows, without Markdown (for code, a token or short expression as written, one per line the narration explains; for a diagram, a node label, not the mermaid source). On a diagram or table slide, walk through it: name the nodes, rows or columns in the narration as they are written on the slide, in the order the viewer should look, and give one cue per node or row (up to 6).',
+    'When the user asks to revise a lesson, call explain_deck again with the whole lesson changed as asked.',
     'When the user asks a follow-up or wants more depth on one part, answer with a new, shorter explain_deck focused on that part. Answer quick yes/no or factual questions with plain text.',
   ].join('\n'),
 }

@@ -3,6 +3,8 @@ import { getCookie } from '@tanstack/react-start/server'
 
 import { isEffort } from '@/lib/effort'
 import type { Effort } from '@/lib/effort'
+import { DEFAULT_EXPLAIN_STYLE } from '@/lib/modes'
+import type { ExplainStyleId } from '@/lib/modes'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { createPersistedStore, useStoreValue } from '@/lib/store'
 import type { Locale } from '@/lib/i18n'
@@ -16,6 +18,8 @@ export type ChatSettings = {
   model: string | null
   customInstructions: string
   replyLanguages: Array<Locale> | null
+  /** The slide explainer style picked last; threads that never picked one follow it. */
+  explainStyle: ExplainStyleId
 }
 
 export const CUSTOM_INSTRUCTIONS_MAX = 4000
@@ -64,6 +68,7 @@ const DEFAULTS: ChatSettings = {
   model: null,
   customInstructions: '',
   replyLanguages: null,
+  explainStyle: DEFAULT_EXPLAIN_STYLE,
 }
 
 /** Mirrors the composer's model and effort so the server renders the composer as the browser will show it. */

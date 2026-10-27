@@ -1,4 +1,4 @@
-import { useRouteContext } from '@tanstack/react-router'
+import { ScriptOnce, useLoaderData, useRouteContext } from '@tanstack/react-router'
 
 import { ComposerTools } from '@/components/composer-tools'
 import { Logo } from '@/components/logo'
@@ -43,15 +43,6 @@ export const COMPOSER_FALLBACK_ATTR = 'data-composer-fallback'
 export function takeFallbackInput() {
   return document.querySelector<HTMLTextAreaElement>(`[${COMPOSER_FALLBACK_ATTR}]`)?.value ?? ''
 }
-
-// Chats live in localStorage, so only the browser knows whether this thread already has messages.
-// Runs while the HTML is parsed, before first paint, so the placeholder picks the matching layout.
-const startedScript = (threadId: string) => `(() => {
-  try {
-    const threads = JSON.parse(localStorage.getItem('chat-threads') || '[]')
-    if (threads.some((t) => t.id === ${JSON.stringify(threadId)})) document.documentElement.dataset.chatStarted = ''
-  } catch {}
-})()`
 
 // The server's clock may sit in another time zone; rewrite the greeting with the browser's hour before paint.
 const greetingScript = (t: ShellCopy, name: string) => `(() => {
@@ -106,10 +97,13 @@ function MessagesSkeleton() {
 export function ChatViewSkeleton({ threadId }: { threadId: string }) {
   const t = useMessages(shellCopy)
   const { user } = useRouteContext({ from: '/_app' })
+  // The thread list comes with the page and a thread exists once it has a message, so the server already knows
+  // which layout to draw.
+  const { threads } = useLoaderData({ from: '/_app' })
+  const started = threads.some((thread) => thread.id === threadId)
 
   return (
-    <div className="flex h-dvh flex-col">
-      <script dangerouslySetInnerHTML={{ __html: startedScript(threadId) }} />
+    <div className="flex h-dvh flex-col" data-chat-started={started ? '' : undefined}>
       <header className="flex h-12 shrink-0 items-center px-3">
         <SidebarTrigger />
       </header>
@@ -118,7 +112,7 @@ export function ChatViewSkeleton({ threadId }: { threadId: string }) {
           <Logo className="size-8" />
           <span suppressHydrationWarning>{greeting(t, user.name)}</span>
         </h1>
-        <script dangerouslySetInnerHTML={{ __html: greetingScript(t, user.name) }} />
+        <ScriptOnce>{greetingScript(t, user.name)}</ScriptOnce>
         <MessagesSkeleton />
         <div className="w-full">
           <InputGroup className="h-auto rounded-2xl border-ring bg-card shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.04)] ring-3 ring-ring/50 dark:bg-card">

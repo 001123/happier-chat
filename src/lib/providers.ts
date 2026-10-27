@@ -37,7 +37,7 @@ export const MODEL_API_SHORT_LABELS: Record<ModelApi, string> = {
   ollama: 'Ollama',
 }
 
-export type PresetId = 'opencode-go' | 'anthropic' | 'openai' | 'openrouter' | 'gemini' | 'ollama' | 'custom'
+export type PresetId = 'opencode' | 'opencode-go' | 'anthropic' | 'openai' | 'openrouter' | 'gemini' | 'ollama' | 'custom'
 
 export type ProviderPreset = {
   id: PresetId
@@ -65,7 +65,34 @@ const OPENCODE_GO_RESPONSES = new Set([
   'muse-spark-1.2-contributor',
 ])
 
+// https://models.dev/providers/opencode/ — Zen serves Claude, Qwen Plus and some MiniMax ids on
+// Anthropic Messages, GPT, Grok and Muse on OpenAI Responses, Gemini on its own API, the rest on Chat.
+const OPENCODE_ZEN_ANTHROPIC = new Set([
+  'qwen3.5-plus',
+  'qwen3.6-plus',
+  'qwen3.6-plus-free',
+  'qwen3.8-flash',
+  'minimax-m2.1-free',
+  'minimax-m2.5-free',
+  'minimax-m3-free',
+])
+
 export const PRESETS: Array<ProviderPreset> = [
+  {
+    id: 'opencode',
+    label: { vi: 'OpenCode Zen', en: 'OpenCode Zen' },
+    description: { vi: 'OpenCode Zen trả theo lượt dùng: Claude, GPT, Gemini, GLM, Kimi… chung một key.', en: 'Pay-as-you-go OpenCode Zen: Claude, GPT, Gemini, GLM, Kimi… on a single key.' },
+    anthropicUrl: 'https://opencode.ai/inference/anthropic',
+    openaiUrl: 'https://opencode.ai/inference/openai/v1',
+    modelsUrl: 'https://opencode.ai/inference/v1/models',
+    keyUrl: 'https://opencode.ai/auth',
+    apiFor: (id) => {
+      if (id.startsWith('claude') || OPENCODE_ZEN_ANTHROPIC.has(id)) return 'anthropic'
+      if (/^(gpt-|muse-|grok-(4|build))/.test(id)) return 'responses'
+      if (id.startsWith('gemini')) return null
+      return 'chat'
+    },
+  },
   {
     id: 'opencode-go',
     label: { vi: 'OpenCode Go', en: 'OpenCode Go' },

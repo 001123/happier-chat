@@ -10,7 +10,7 @@ import { getDbQueryClient, persist, reportFailure } from '@/lib/db'
 import { useHydrated } from '@/lib/hydrated'
 import { clearReactions } from '@/lib/reactions'
 import { getThreads, importLocalThread, removeThreads, saveThread, updateThreads } from '@/server/threads.functions'
-import type { ModeId } from '@/lib/modes'
+import type { ExplainStyleId, ModeId } from '@/lib/modes'
 
 export type Thread = {
   id: string
@@ -20,6 +20,7 @@ export type Thread = {
   renamed?: boolean
   archived?: boolean
   mode?: ModeId
+  explainStyle?: ExplainStyleId
 }
 
 // Where this browser kept the thread list before the server owned it; only read by the one-time upload.
@@ -36,7 +37,14 @@ const fetchThreads = async (): Promise<Array<Thread>> => (await getThreads()).ma
 
 export const threadsQueryOptions = queryOptions({ queryKey: ['threads'], queryFn: fetchThreads })
 
-type ThreadPatch = { title?: string; renamed?: boolean; archived?: boolean; projectId?: string | null; mode?: ModeId | null }
+type ThreadPatch = {
+  title?: string
+  renamed?: boolean
+  archived?: boolean
+  projectId?: string | null
+  mode?: ModeId | null
+  explainStyle?: ExplainStyleId | null
+}
 
 function diff(original: Thread, modified: Thread): ThreadPatch {
   const patch: ThreadPatch = {}
@@ -45,6 +53,7 @@ function diff(original: Thread, modified: Thread): ThreadPatch {
   if (!!modified.archived !== !!original.archived) patch.archived = !!modified.archived
   if ((modified.projectId ?? null) !== (original.projectId ?? null)) patch.projectId = modified.projectId ?? null
   if ((modified.mode ?? null) !== (original.mode ?? null)) patch.mode = modified.mode ?? null
+  if ((modified.explainStyle ?? null) !== (original.explainStyle ?? null)) patch.explainStyle = modified.explainStyle ?? null
   return patch
 }
 
@@ -60,7 +69,14 @@ function createThreadsCollection(queryClient: QueryClient) {
         persist(collection, async () => {
           for (const { modified: t } of transaction.mutations) {
             await saveThread({
-              data: { id: t.id, title: t.title, updatedAt: t.updatedAt, projectId: t.projectId, mode: t.mode },
+              data: {
+                id: t.id,
+                title: t.title,
+                updatedAt: t.updatedAt,
+                projectId: t.projectId,
+                mode: t.mode,
+                explainStyle: t.explainStyle,
+              },
             })
           }
         }),
@@ -240,9 +256,14 @@ export function hasThread(id: string) {
 }
 
 // Chosen for threads that do not exist yet; they move onto the thread when it is created.
-const pending = new Store<{ projects: Readonly<Record<string, string>>; modes: Readonly<Record<string, ModeId>> }>({
+const pending = new Store<{
+  projects: Readonly<Record<string, string>>
+  modes: Readonly<Record<string, ModeId>>
+  explainStyles: Readonly<Record<string, ExplainStyleId>>
+}>({
   projects: {},
   modes: {},
+  explainStyles: {},
 })
 
 function without<T>(record: Readonly<Record<string, T>>, id: string) {
@@ -292,17 +313,50 @@ export function setThreadMode(id: string, mode: ModeId | null) {
   pending.setState((prev) => ({ ...prev, modes: mode ? { ...prev.modes, [id]: mode } : without(prev.modes, id) }))
 }
 
+/** Explain style chosen for a thread that has not been created yet. */
+export function usePendingExplainStyle(id: string) {
+  return useSelector(pending, (state) => state.explainStyles[id] ?? null)
+}
+
+/** Sets how the slide explainer teaches in this thread; like the mode, pending until the thread exists. */
+export function setThreadExplainStyle(id: string, style: ExplainStyleId) {
+  const threads = must()
+  if (threads.has(id)) {
+    reportFailure(
+      'Could not save thread changes',
+      threads.update(id, (draft) => {
+        draft.explainStyle = style
+      }),
+    )
+    return
+  }
+  pending.setState((prev) => ({ ...prev, explainStyles: { ...prev.explainStyles, [id]: style } }))
+}
+
 export function upsertThread(id: string, title: string) {
   const threads = must()
   const existing = threads.get(id)
   if (!existing) {
-    const { projects, modes } = pending.get()
+    const { projects, modes, explainStyles } = pending.get()
     const projectId = projects[id]
     const mode = modes[id]
-    pending.setState((prev) => ({ projects: without(prev.projects, id), modes: without(prev.modes, id) }))
+    const explainStyle = explainStyles[id]
+    pending.setState((prev) => ({
+      projects: without(prev.projects, id),
+      modes: without(prev.modes, id),
+      explainStyles: without(prev.explainStyles, id),
+    }))
     reportFailure(
       'Could not save thread changes',
-      threads.insert({ id, title, updatedAt: Date.now(), archived: false, ...(projectId && { projectId }), ...(mode && { mode }) }),
+      threads.insert({
+        id,
+        title,
+        updatedAt: Date.now(),
+        archived: false,
+        ...(projectId && { projectId }),
+        ...(mode && { mode }),
+        ...(explainStyle && { explainStyle }),
+      }),
     )
   } else if (!existing.renamed && existing.title !== title) {
     reportFailure(

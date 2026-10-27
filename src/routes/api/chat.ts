@@ -37,7 +37,8 @@ import { isEffort } from '@/lib/effort'
 import { parseReplyLanguages, replyLanguageInstruction } from '@/lib/reply-language'
 import { CUSTOM_INSTRUCTIONS_MAX } from '@/lib/chat-settings'
 import { buildSpec, renderUiDef, specIssues } from '@/lib/generative-ui'
-import { MODE_PROMPTS, isModeId } from '@/lib/modes'
+import { EXPLAIN_STYLE_PROMPTS, MODE_PROMPTS, isExplainStyleId, isModeId } from '@/lib/modes'
+import type { ExplainStyleId } from '@/lib/modes'
 import type { Weather, WeatherCondition } from '@/lib/tools'
 import { parseModelKey } from '@/lib/providers'
 import { chatPersistenceFor } from '@/server/chat-persistence.server'
@@ -161,18 +162,31 @@ const showDrawingBoard = showDrawingBoardDef.server(async () => ({ shown: true }
 const MERMAID_BLOCK = /```mermaid[^\n]*\n([\s\S]*?)```/g
 
 // Diagrams are checked with the same parser the chat renders them with, so a broken one comes back to the model to fix.
-const explainDeck = explainDeckDef.server(async ({ slides }) => {
-  const issues = slides.flatMap((slide, i) =>
-    Array.from(slide.content.matchAll(MERMAID_BLOCK), ([, source]) => {
+// Each layout's own field is checked too, since the schema leaves them optional. The result records the style the
+// lesson was built in, so the card can label it and offer a rebuild after the viewer switches styles.
+const explainDeckFor = (style: ExplainStyleId | undefined) => explainDeckDef.server(async ({ slides }) => {
+  const issues = slides.flatMap((slide, i) => {
+    const at = `slides/${i} ("${slide.title}")`
+    const layout = slide.layout ?? 'content'
+    const problems: Array<string> = []
+    if (layout === 'content' && !slide.content?.trim()) problems.push(`${at}: the content layout needs content`)
+    if (layout === 'cards' && (slide.cards?.length ?? 0) < 2) problems.push(`${at}: the cards layout needs 2-4 cards`)
+    if (layout === 'quiz') {
+      const quiz = slide.quiz
+      if (!quiz) problems.push(`${at}: the quiz layout needs quiz`)
+      else if (quiz.answer < 0 || quiz.answer >= quiz.options.length)
+        problems.push(`${at}: quiz.answer must be the index of one of its ${quiz.options.length} options`)
+    }
+    for (const [, source] of (slide.content ?? '').matchAll(MERMAID_BLOCK)) {
       try {
         parseMermaid(source!)
-        return null
       } catch (error) {
-        return `slides/${i} ("${slide.title}"): mermaid diagram does not parse: ${(error as Error).message}`
+        problems.push(`${at}: mermaid diagram does not parse: ${(error as Error).message}`)
       }
-    }).filter((issue) => issue !== null),
-  )
-  return { shown: issues.length === 0, issues }
+    }
+    return problems
+  })
+  return { shown: issues.length === 0, issues, ...(style && { style }) }
 })
 
 const sendEmail = sendEmailDef.server(async () => {
@@ -304,6 +318,8 @@ export const Route = createFileRoute('/api/chat')({
         const projectInstructions = text(forwardedProps.projectInstructions)
         const replyLanguages = parseReplyLanguages(forwardedProps.replyLanguages)
         const mode = isModeId(forwardedProps.mode) ? forwardedProps.mode : null
+        const explainStyle =
+          mode === 'explain' && isExplainStyleId(forwardedProps.explainStyle) ? forwardedProps.explainStyle : undefined
         const selected = typeof forwardedProps.model === 'string' ? parseModelKey(forwardedProps.model) : null
         if (!selected) return Response.json({ error: copy[getLocale()].noModel }, { status: 400 })
         let resolved: ReturnType<typeof createUserAdapter>
@@ -330,6 +346,7 @@ export const Route = createFileRoute('/api/chat')({
             codeMode.systemPrompt,
             'From time to time, use react_to_message to react to the user\'s messages with an emoji when it fits, like a friend texting.',
             ...(mode ? [MODE_PROMPTS[mode]] : []),
+            ...(explainStyle ? [EXPLAIN_STYLE_PROMPTS[explainStyle]] : []),
             ...(customInstructions
               ? [`The user has provided custom instructions. Follow them unless they conflict with the rules above:\n<custom_instructions>\n${customInstructions}\n</custom_instructions>`]
               : []),
@@ -342,7 +359,7 @@ export const Route = createFileRoute('/api/chat')({
           runId,
           parentRunId,
           resume,
-          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, showDrawingBoard, explainDeck, renderUi, ...codeMode.tools],
+          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, showDrawingBoard, explainDeckFor(explainStyle), renderUi, ...codeMode.tools],
           // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
           modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
           reasoning: effort,

@@ -43,7 +43,8 @@ export function ModelPicker() {
     <Menu.Root>
       <Menu.Trigger
         render={<InputGroupButton type="button" size="xs" />}
-        className="max-w-48 text-xs text-muted-foreground data-popup-open:bg-muted data-popup-open:text-foreground"
+        // Gives way before the send button when the row is full (a mode chip plus a long model id).
+        className="max-w-48 min-w-0 shrink text-xs text-muted-foreground data-popup-open:bg-muted data-popup-open:text-foreground"
         title={active.info ? `${active.info.name} · ${describeModel(active.info)}` : undefined}
       >
         <span className="truncate">{active.modelId}</span>

@@ -15,6 +15,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiStartersRouteImport } from './routes/api/starters'
 import { Route as ApiSuggestionsRouteImport } from './routes/api/suggestions'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
 import { Route as ApiVoicesRouteImport } from './routes/api/voices'
@@ -59,6 +60,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStartersRoute = ApiStartersRouteImport.update({
+  id: '/api/starters',
+  path: '/api/starters',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSuggestionsRoute = ApiSuggestionsRouteImport.update({
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/api/chat': typeof ApiChatRoute
+  '/api/starters': typeof ApiStartersRoute
   '/api/suggestions': typeof ApiSuggestionsRoute
   '/api/tts': typeof ApiTtsRoute
   '/api/voices': typeof ApiVoicesRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/starters': typeof ApiStartersRoute
   '/api/suggestions': typeof ApiSuggestionsRoute
   '/api/tts': typeof ApiTtsRoute
   '/api/voices': typeof ApiVoicesRoute
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/api/chat': typeof ApiChatRoute
+  '/api/starters': typeof ApiStartersRoute
   '/api/suggestions': typeof ApiSuggestionsRoute
   '/api/tts': typeof ApiTtsRoute
   '/api/voices': typeof ApiVoicesRoute
@@ -219,6 +228,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/settings'
     | '/api/chat'
+    | '/api/starters'
     | '/api/suggestions'
     | '/api/tts'
     | '/api/voices'
@@ -240,6 +250,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/chat'
+    | '/api/starters'
     | '/api/suggestions'
     | '/api/tts'
     | '/api/voices'
@@ -263,6 +274,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_app/settings'
     | '/api/chat'
+    | '/api/starters'
     | '/api/suggestions'
     | '/api/tts'
     | '/api/voices'
@@ -287,6 +299,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiStartersRoute: typeof ApiStartersRoute
   ApiSuggestionsRoute: typeof ApiSuggestionsRoute
   ApiTtsRoute: typeof ApiTtsRoute
   ApiVoicesRoute: typeof ApiVoicesRoute
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/api/chat'
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/starters': {
+      id: '/api/starters'
+      path: '/api/starters'
+      fullPath: '/api/starters'
+      preLoaderRoute: typeof ApiStartersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/suggestions': {
@@ -513,6 +533,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiStartersRoute: ApiStartersRoute,
   ApiSuggestionsRoute: ApiSuggestionsRoute,
   ApiTtsRoute: ApiTtsRoute,
   ApiVoicesRoute: ApiVoicesRoute,

@@ -255,10 +255,38 @@ export const explainDeckInputSchema = z.object({
   slides: z
     .array(
       z.object({
+        layout: z
+          .enum(['content', 'title', 'cards', 'quiz'])
+          .optional()
+          .meta({ description: 'How the slide is laid out: content (default, shows content), title (a big centered heading with content as a one-line subtitle), cards (shows cards), quiz (shows quiz and waits for the viewer to answer).' }),
         title: z.string().meta({ description: 'Short slide heading in the reply language' }),
         content: z
           .string()
-          .meta({ description: 'What the slide shows, as Markdown: a few bullets, one small fenced code block, a ```mermaid diagram, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together.' }),
+          .optional()
+          .meta({ description: 'For the content layout, what the slide shows, as Markdown: a few bullets, one small fenced code block, a ```mermaid diagram, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together. For the title layout, a one-line subtitle.' }),
+        cards: z
+          .array(
+            z.object({
+              emoji: z.string().meta({ description: 'One emoji for the idea' }),
+              title: z.string().meta({ description: 'A 1-3 word name for the idea' }),
+              text: z.string().meta({ description: 'One short sentence' }),
+            }),
+          )
+          .min(2)
+          .max(4)
+          .optional()
+          .meta({ description: 'For the cards layout: 2-4 parallel ideas shown side by side; each appears when the narration reaches it.' }),
+        quiz: z
+          .object({
+            question: z.string(),
+            options: z.array(z.string()).min(2).max(4),
+            answer: z.number().int().meta({ description: 'Index of the correct option, from 0' }),
+            explanation: z
+              .string()
+              .meta({ description: 'Read aloud and shown once the viewer answers: 2-3 spoken sentences on why the right option is right and why the most tempting wrong one is not, plain text.' }),
+          })
+          .optional()
+          .meta({ description: 'For the quiz layout: one multiple-choice question about what the lesson just covered.' }),
         narration: z
           .string()
           .meta({ description: 'What the narrator says while this slide is shown: 2-4 spoken sentences in the reply language, plain text without markdown, code or URLs.' }),
@@ -271,9 +299,9 @@ export const explainDeckInputSchema = z.object({
                 .meta({ description: 'Short text copied exactly from what the slide shows (a bullet phrase, a code token, a table cell, or a diagram node label, never mermaid source) for the cursor to point at.' }),
             }),
           )
-          .max(4)
+          .max(6)
           .optional()
-          .meta({ description: '1-3 cues, in narration order, that move an on-screen cursor to the thing being talked about, like a presenter pointing.' }),
+          .meta({ description: '1-3 cues (up to 6 on a diagram or table, one per node or row), in narration order, that move an on-screen cursor to the thing being talked about, like a presenter pointing.' }),
       }),
     )
     .min(2)
@@ -286,5 +314,5 @@ export const explainDeckDef = toolDefinition({
   description:
     'Display a narrated slide lesson: slides appear as they stream in, and a player reads each slide\'s narration aloud and moves to the next slide on its own (play/pause, prev/next). Use it to explain a concept, a piece of code, a file or a link step by step. The lesson is the reply, so do not write any text next to it. If it returns issues, call it again with the whole deck fixed.',
   inputSchema: explainDeckInputSchema,
-  outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()) }),
+  outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()), style: z.string().optional() }),
 })

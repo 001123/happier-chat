@@ -31,7 +31,7 @@ const url = z
   .nullable()
 
 const api = z.enum(['anthropic', 'chat', 'responses', 'gemini', 'ollama'])
-const preset = z.enum(['opencode-go', 'anthropic', 'openai', 'openrouter', 'gemini', 'ollama', 'custom'])
+const preset = z.enum(['opencode', 'opencode-go', 'anthropic', 'openai', 'openrouter', 'gemini', 'ollama', 'custom'])
 
 const endpoints = z.object({
   providerId: z.string().optional(),

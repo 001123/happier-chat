@@ -22,6 +22,10 @@ const messages = defineMessages({
       'composer.focusAlt': 'Đến ô nhập tin nhắn',
       'chat.stop': 'Dừng trả lời',
       'help.shortcuts': 'Mở bảng phím tắt',
+      'lesson.playPause': 'Bài giảng: phát/tạm dừng',
+      'lesson.prev': 'Bài giảng: slide trước',
+      'lesson.next': 'Bài giảng: slide sau',
+      'lesson.fullscreen': 'Bài giảng: toàn màn hình',
     } satisfies Record<AppHotkeyId, string>,
   },
   en: {
@@ -37,6 +41,10 @@ const messages = defineMessages({
       'composer.focusAlt': 'Focus message box',
       'chat.stop': 'Stop generating',
       'help.shortcuts': 'Show keyboard shortcuts',
+      'lesson.playPause': 'Lesson: play/pause',
+      'lesson.prev': 'Lesson: previous slide',
+      'lesson.next': 'Lesson: next slide',
+      'lesson.fullscreen': 'Lesson: full screen',
     },
   },
 })

@@ -57,6 +57,7 @@ const SCHEMA = `
     renamed integer not null default 0,
     archived integer not null default 0,
     mode text,
+    explain_style text,
     primary key (user_id, id)
   );
 
@@ -122,6 +123,10 @@ function migrate(db: DatabaseSync) {
   }
   if (!userColumns.some((column) => column.name === 'name')) {
     db.exec("alter table users add column name text not null default ''")
+  }
+  const threadColumns = db.prepare('pragma table_info(chat_threads)').all() as Array<{ name: string }>
+  if (!threadColumns.some((column) => column.name === 'explain_style')) {
+    db.exec('alter table chat_threads add column explain_style text')
   }
 }
 

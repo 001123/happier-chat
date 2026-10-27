@@ -36,3 +36,9 @@ patchedDependencies:
   # Remove once https://github.com/TanStack/devtools/pull/542 is released
   # (issue: https://github.com/TanStack/devtools/issues/525).
   '@tanstack/devtools-vite': patches/@tanstack__devtools-vite.patch
+
+allowBuilds:
+  '@google/genai': set this to true or false
+  lmdb: set this to true or false
+  msgpackr-extract: set this to true or false
+  protobufjs: set this to true or false

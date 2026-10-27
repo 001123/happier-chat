@@ -4,10 +4,11 @@ import { z } from 'zod'
 import { authMiddleware } from './auth.functions'
 import { assertSameOrigin } from './session.server'
 import { clearThreadHistory, deleteThreads, importThread, listThreads, patchThreads, upsertThread } from './threads.server'
-import { isModeId } from '@/lib/modes'
+import { isExplainStyleId, isModeId } from '@/lib/modes'
 
 const id = z.string().min(1).max(100)
 const mode = z.string().refine(isModeId)
+const explainStyle = z.string().refine(isExplainStyleId)
 
 export const getThreads = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
@@ -22,6 +23,7 @@ export const saveThread = createServerFn({ method: 'POST' })
       updatedAt: z.number(),
       projectId: id.optional(),
       mode: mode.optional(),
+      explainStyle: explainStyle.optional(),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -41,6 +43,7 @@ export const updateThreads = createServerFn({ method: 'POST' })
         archived: z.boolean().optional(),
         projectId: id.nullable().optional(),
         mode: mode.nullable().optional(),
+        explainStyle: explainStyle.nullable().optional(),
       }),
     }),
   )

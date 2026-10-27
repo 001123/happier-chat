@@ -89,8 +89,9 @@ import { defineMessages, useLocale, useMessages } from '@/lib/i18n'
 import { CodeModeCard } from '@/components/code-mode-card'
 import type { CodeModeEvent } from '@/components/code-mode-card'
 import { runnableCodeRenderers } from '@/components/runnable-code-block'
-import { ModeStarter, useChatMode } from '@/components/chat-modes'
+import { ModeStarter, useChatMode, useExplainStyle } from '@/components/chat-modes'
 import { readDisplaySettings } from '@/lib/display-settings'
+import { isExplainStyleId } from '@/lib/modes'
 import { useActiveModel } from '@/lib/provider-store'
 import { useSpeechSettings } from '@/lib/speech-settings'
 import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
@@ -432,10 +433,11 @@ export function ChatView({ threadId }: { threadId: string }) {
   const projectName = project?.name
   const projectInstructions = project?.instructions
   const mode = useChatMode(threadId)
+  const explainStyle = useExplainStyle(threadId)
   const forwardedProps = React.useMemo(
-    () => ({ effort, model, customInstructions, projectName, projectInstructions, replyLanguages, mode }),
+    () => ({ effort, model, customInstructions, projectName, projectInstructions, replyLanguages, mode, explainStyle }),
     // Joined so a fresh array from resolveReplyLanguages() each render doesn't recreate the props.
-    [effort, model, customInstructions, projectName, projectInstructions, replyLanguages.join(), mode],
+    [effort, model, customInstructions, projectName, projectInstructions, replyLanguages.join(), mode, explainStyle],
   )
 
   const runIdRef = React.useRef<string | null>(null)
@@ -698,6 +700,7 @@ export function ChatView({ threadId }: { threadId: string }) {
             <ViewTransition name="composer">{composer}</ViewTransition>
             <ModeStarter
               threadId={threadId}
+              model={model}
               onSend={(text) => {
                 startTransition(() => setStarted(true))
                 void sendMessage(text)
@@ -958,6 +961,12 @@ export function ChatView({ threadId }: { threadId: string }) {
                                   input={(input ?? {}) as Partial<ExplainDeckInput>}
                                   streaming={part.input === undefined && part.state !== 'error'}
                                   speaker={speaker}
+                                  style={isExplainStyleId(deckOutput?.style) ? deckOutput.style : undefined}
+                                  // Only the latest lesson offers a rebuild in the style the viewer switched to.
+                                  restyle={
+                                    mode === 'explain' && !isLoading && message === messages.at(-1) ? explainStyle : undefined
+                                  }
+                                  onAsk={(content) => void sendMessage(content)}
                                 />
                               )
                             })}

@@ -12,6 +12,7 @@ type Row = {
   renamed: number
   archived: number
   mode: string | null
+  explain_style: string | null
 }
 
 function toThread(row: Row): Thread {
@@ -23,24 +24,36 @@ function toThread(row: Row): Thread {
     ...(row.renamed && { renamed: true }),
     ...(row.archived && { archived: true }),
     ...(row.mode && { mode: row.mode as Thread['mode'] }),
+    ...(row.explain_style && { explainStyle: row.explain_style as Thread['explainStyle'] }),
   }
 }
 
 export function listThreads(userId: string): Array<Thread> {
   const rows = getDb()
-    .prepare('select id, title, updated_at, project_id, renamed, archived, mode from chat_threads where user_id = ? order by updated_at desc')
+    .prepare('select id, title, updated_at, project_id, renamed, archived, mode, explain_style from chat_threads where user_id = ? order by updated_at desc')
     .all(userId) as Array<Row>
   return rows.map(toThread)
 }
 
 /** Creates the thread, or follows the first message's title until the user has renamed it. */
-export function upsertThread(userId: string, thread: Pick<Thread, 'id' | 'title' | 'updatedAt' | 'projectId' | 'mode'>) {
+export function upsertThread(
+  userId: string,
+  thread: Pick<Thread, 'id' | 'title' | 'updatedAt' | 'projectId' | 'mode' | 'explainStyle'>,
+) {
   getDb()
     .prepare(
-      `insert into chat_threads (user_id, id, title, updated_at, project_id, mode) values (?, ?, ?, ?, ?, ?)
+      `insert into chat_threads (user_id, id, title, updated_at, project_id, mode, explain_style) values (?, ?, ?, ?, ?, ?, ?)
        on conflict(user_id, id) do update set title = excluded.title where chat_threads.renamed = 0`,
     )
-    .run(userId, thread.id, thread.title, thread.updatedAt, thread.projectId ?? null, thread.mode ?? null)
+    .run(
+      userId,
+      thread.id,
+      thread.title,
+      thread.updatedAt,
+      thread.projectId ?? null,
+      thread.mode ?? null,
+      thread.explainStyle ?? null,
+    )
 }
 
 export type ThreadPatch = {
@@ -49,6 +62,7 @@ export type ThreadPatch = {
   archived?: boolean
   projectId?: string | null
   mode?: string | null
+  explainStyle?: string | null
 }
 
 export function patchThreads(userId: string, ids: Array<string>, patch: ThreadPatch) {
@@ -63,6 +77,7 @@ export function patchThreads(userId: string, ids: Array<string>, patch: ThreadPa
   if (patch.archived !== undefined) add('archived', patch.archived ? 1 : 0)
   if (patch.projectId !== undefined) add('project_id', patch.projectId)
   if (patch.mode !== undefined) add('mode', patch.mode)
+  if (patch.explainStyle !== undefined) add('explain_style', patch.explainStyle)
   if (sets.length === 0 || ids.length === 0) return
   const update = getDb().prepare(`update chat_threads set ${sets.join(', ')} where user_id = ? and id = ?`)
   for (const id of ids) update.run(...values, userId, id)

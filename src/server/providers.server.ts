@@ -147,10 +147,10 @@ const trimSlash = (url: string) => url.replace(/\/+$/, '')
 
 /**
  * Headers some presets require. OpenCode Go routes and caches per conversation and asks clients to
- * name themselves: https://opencode.ai/docs/go/#where-can-i-use-it
+ * name themselves: https://opencode.ai/docs/go/#where-can-i-use-it — Zen shares its gateway.
  */
 function presetHeaders(preset: PresetId, sessionId: string): Record<string, string> {
-  if (preset !== 'opencode-go') return {}
+  if (preset !== 'opencode' && preset !== 'opencode-go') return {}
   return { 'user-agent': `happier-chat/${__APP_VERSION__}`, 'x-opencode-session': sessionId }
 }
 
