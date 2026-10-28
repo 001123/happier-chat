@@ -333,12 +333,12 @@ export const explainDeckInputSchema = z.object({
               say: z.string().meta({ description: 'A few words copied exactly from this slide\'s narration; the cursor moves when the narrator reaches them.' }),
               at: z
                 .string()
-                .meta({ description: 'Short text copied exactly from what the slide shows (a bullet phrase, a code token, a table cell, or a diagram node label, never mermaid source) for the cursor to point at.' }),
+                .meta({ description: 'Short text copied exactly from what the slide shows (the opening words of a bullet, a code token, a table cell, or a diagram node label; never the slide heading or mermaid source) for the cursor to point at.' }),
             }),
           )
           .max(6)
           .optional()
-          .meta({ description: '1-3 cues (up to 6 on a diagram or table, one per node or row), in narration order, that move an on-screen cursor to the thing being talked about, like a presenter pointing.' }),
+          .meta({ description: '1-3 cues (one per bullet or card on a slide of them; up to 6 on a diagram or table, one per node or row), in narration order, that move an on-screen cursor to the thing being talked about, like a presenter pointing.' }),
       }),
     )
     .min(2)

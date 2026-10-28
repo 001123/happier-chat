@@ -371,6 +371,31 @@ export function ComposerModeChip({ threadId, className }: { threadId: string; cl
   )
 }
 
+/** Pulsing stand-in for the mode chip while the chat bundle loads, sized like the real chip. */
+export function ComposerModeChipSkeleton({ mode, explainStyle }: { mode: ModeId; explainStyle?: ExplainStyleId }) {
+  const t = useMessages(messages)
+  const Icon = MODE_ICONS[mode]
+  return (
+    <span
+      aria-hidden
+      className="flex h-6 min-w-0 items-center gap-1 rounded-full bg-muted-foreground/15 pr-0.5 pl-2 text-xs font-medium animate-pulse motion-reduce:animate-none"
+    >
+      <span className="invisible flex min-w-0 items-center gap-1">
+        <Icon className="size-3.5" />
+        <span className="max-w-32 truncate">{t.modes[mode].name}</span>
+        {mode === 'explain' && (
+          <span className="flex h-5 items-center gap-0.5 px-1 font-normal">
+            <span>·</span>
+            <span className="max-w-24 truncate">{t.styles[explainStyle ?? DEFAULT_EXPLAIN_STYLE].name}</span>
+            <IconChevronDown className="size-3" />
+          </span>
+        )}
+        <span className="size-5" />
+      </span>
+    </span>
+  )
+}
+
 /** The explainer chip's style switcher: the current style, opening a menu of all of them. */
 function ExplainStyleMenu({ threadId }: { threadId: string }) {
   const t = useMessages(messages)

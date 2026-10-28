@@ -62,7 +62,7 @@ export function resolveReplyLanguages(settings: ChatSettings, uiLocale: Locale):
   return settings.replyLanguages ?? [uiLocale]
 }
 
-const DEFAULTS: ChatSettings = {
+export const DEFAULTS: ChatSettings = {
   showThinking: true,
   showTools: true,
   showSuggestions: true,
@@ -111,4 +111,10 @@ export function useChatSettings() {
 export function setChatSetting<K extends keyof ChatSettings>(key: K, value: ChatSettings[K]) {
   chatStore.setState((prev) => ({ ...prev, [key]: value }))
   if (key === 'model' || key === 'effort') writeCookie(chatStore.get())
+}
+
+/** Restores the given settings to their defaults, leaving the rest untouched. */
+export function resetChatSettings(keys: ReadonlyArray<keyof ChatSettings>) {
+  chatStore.setState((prev) => ({ ...prev, ...Object.fromEntries(keys.map((key) => [key, DEFAULTS[key]])) }))
+  if (keys.includes('model') || keys.includes('effort')) writeCookie(chatStore.get())
 }

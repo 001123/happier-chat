@@ -12,8 +12,8 @@
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --font-serif: 'Source Serif 4 Variable', Georgia, serif;
+    --font-sans: var(--app-font-sans, 'Geist Variable', sans-serif);
+    --font-serif: var(--app-font-serif, 'Source Serif 4 Variable', Georgia, serif);
     --text-chat: calc(0.9375rem * var(--chat-font-scale));
     --text-reply: calc(1.03125rem * var(--chat-font-scale));
     --color-user-bubble: var(--user-bubble);

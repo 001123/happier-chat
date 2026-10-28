@@ -3,6 +3,16 @@ import { IconRotate } from '@tabler/icons-react'
 import { cn } from 'cn'
 
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
   DEFAULTS,
@@ -10,6 +20,15 @@ import {
   useDisplaySettings,
   useScaleOptions,
 } from '@/lib/display-settings'
+import {
+  BUNDLED_FONTS,
+  fontPreviewStylesheetUrl,
+  fontStack,
+  SANS_FONTS,
+  SERIF_FONTS,
+  type FontSlot,
+  type GoogleFont,
+} from '@/lib/google-fonts'
 import { defineMessages, getLocale, useMessages } from '@/lib/i18n'
 
 const messages = defineMessages({
@@ -22,6 +41,12 @@ const messages = defineMessages({
     uiScaleHelp: 'Phóng to hoặc thu nhỏ toàn bộ ứng dụng: chữ, nút, khoảng cách, sidebar.',
     chatFont: 'Cỡ chữ trò chuyện',
     chatFontHelp: 'Cỡ chữ của tin nhắn, câu trả lời và ô nhập.',
+    sansFont: 'Phông giao diện',
+    sansFontHelp: 'Dùng cho nút, menu, tin nhắn của bạn và ô nhập.',
+    serifFont: 'Phông câu trả lời',
+    serifFontHelp: 'Dùng cho câu trả lời của AI và tiêu đề.',
+    fontSource: 'Phông chữ khác Mặc định được tải từ Google Fonts.',
+    defaultFont: 'Mặc định',
     leftSidebar: 'Mở sidebar trái',
     leftSidebarHelp: 'Danh sách cuộc trò chuyện mở sẵn khi tải ứng dụng.',
     rightSidebar: 'Mở bảng Tiện ích',
@@ -40,6 +65,12 @@ const messages = defineMessages({
     uiScaleHelp: 'Zoom the whole app in or out: text, buttons, spacing, sidebar.',
     chatFont: 'Chat font size',
     chatFontHelp: 'Font size of messages, replies and the input box.',
+    sansFont: 'Interface font',
+    sansFontHelp: 'Used for buttons, menus, your messages and the input box.',
+    serifFont: 'Reply font',
+    serifFontHelp: 'Used for AI replies and headings.',
+    fontSource: 'Fonts other than Default are loaded from Google Fonts.',
+    defaultFont: 'Default',
     leftSidebar: 'Open left sidebar',
     leftSidebarHelp: 'Show the conversation list when the app loads.',
     rightSidebar: 'Open Utilities panel',
@@ -111,6 +142,32 @@ function DisplaySettingsPage() {
         </SettingRow>
       </div>
 
+      <div className="flex flex-col gap-2">
+        <div className="divide-y rounded-xl border bg-card">
+          <SettingRow label={t.sansFont} description={t.sansFontHelp} inline>
+            <FontPicker
+              slot="sans"
+              fonts={SANS_FONTS}
+              defaultLabel={`${t.defaultFont} · Geist`}
+              googleLabel="Google Fonts"
+              value={settings.sansFont}
+              onChange={(sansFont) => setDisplaySettings({ sansFont })}
+            />
+          </SettingRow>
+          <SettingRow label={t.serifFont} description={t.serifFontHelp} inline>
+            <FontPicker
+              slot="serif"
+              fonts={SERIF_FONTS}
+              defaultLabel={`${t.defaultFont} · Source Serif`}
+              googleLabel="Google Fonts"
+              value={settings.serifFont}
+              onChange={(serifFont) => setDisplaySettings({ serifFont })}
+            />
+          </SettingRow>
+        </div>
+        <p className="px-1 text-xs text-muted-foreground">{t.fontSource}</p>
+      </div>
+
       <div className="divide-y rounded-xl border bg-card">
         {sidebarToggles.map((option) => (
           <label key={option.key} className="flex cursor-pointer items-center justify-between gap-4 p-4">
@@ -144,14 +201,17 @@ function DisplaySettingsPage() {
 function SettingRow({
   label,
   description,
+  inline = false,
   children,
 }: {
   label: string
   description: string
+  /** Puts the control beside the label instead of below it. */
+  inline?: boolean
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className={cn('flex gap-3 p-4', inline ? 'flex-col sm:flex-row sm:items-center sm:justify-between' : 'flex-col')}>
       <div>
         <div className="text-sm font-medium">{label}</div>
         <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
@@ -190,5 +250,64 @@ function Segmented({
         </button>
       ))}
     </div>
+  )
+}
+
+const DEFAULT_FONT = 'default'
+
+function FontPicker({
+  slot,
+  fonts,
+  defaultLabel,
+  googleLabel,
+  value,
+  onChange,
+}: {
+  slot: FontSlot
+  fonts: ReadonlyArray<GoogleFont>
+  defaultLabel: string
+  googleLabel: string
+  value: string | null
+  onChange: (value: string | null) => void
+}) {
+  const options = [
+    { value: DEFAULT_FONT, label: defaultLabel, fontFamily: BUNDLED_FONTS[slot] },
+    ...fonts.map((font) => ({ value: font.family, label: font.family, fontFamily: fontStack(slot, font.family) })),
+  ]
+  const selected = options.find((option) => option.value === (value ?? DEFAULT_FONT)) ?? options[0]
+  const [bundled, ...google] = options
+  return (
+    <>
+      <link rel="stylesheet" href={fontPreviewStylesheetUrl(fonts)} precedence="default" />
+      <Select
+        items={Object.fromEntries(options.map((option) => [option.value, option.label]))}
+        value={selected.value}
+        onValueChange={(next: string | null) => next && onChange(next === DEFAULT_FONT ? null : next)}
+      >
+        <SelectTrigger className="w-full shrink-0 sm:w-56" style={{ fontFamily: selected.fontFamily }}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false} align="end" className="max-h-80">
+          <SelectGroup>
+            <FontItem option={bundled} />
+          </SelectGroup>
+          <SelectSeparator />
+          <SelectGroup>
+            <SelectLabel>{googleLabel}</SelectLabel>
+            {google.map((option) => (
+              <FontItem key={option.value} option={option} />
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </>
+  )
+}
+
+function FontItem({ option }: { option: { value: string; label: string; fontFamily: string } }) {
+  return (
+    <SelectItem value={option.value} className="py-1.5 text-[0.9375rem]" style={{ fontFamily: option.fontFamily }}>
+      {option.label}
+    </SelectItem>
   )
 }

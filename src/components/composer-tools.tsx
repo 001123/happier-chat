@@ -4,7 +4,7 @@ import { cn } from 'cn'
 
 import { ContextRing, ContextRingPlaceholder } from '@/components/chat-stats'
 import type { RunStat } from '@/components/chat-stats'
-import { ComposerModeChip } from '@/components/chat-modes'
+import { ComposerModeChip, ComposerModeChipSkeleton } from '@/components/chat-modes'
 import { ComposerProjectPicker } from '@/components/composer-project-picker'
 import { ComposerSettingsMenu } from '@/components/composer-settings-menu'
 import { ModelPicker } from '@/components/model-picker'
@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { setChatSetting, useChatSettings } from '@/lib/chat-settings'
 import { EFFORTS, isEffort, useEffortDescriptions, useEffortLabels } from '@/lib/effort'
 import { defineMessages, useMessages } from '@/lib/i18n'
+import type { ExplainStyleId, ModeId } from '@/lib/modes'
 
 // Shared by the chat view and its server-rendered skeleton, so the toolbar is in place on first paint.
 
@@ -30,6 +31,7 @@ export function ComposerTools({
   messageCount = 0,
   started = false,
   skeleton = false,
+  skeletonMode,
 }: {
   threadId: string
   offline?: boolean
@@ -40,11 +42,13 @@ export function ComposerTools({
   started?: boolean
   /** Server-rendered placeholder: only the inline script knows whether the chat has started. */
   skeleton?: boolean
+  /** The thread's saved mode, known to the server before the thread store hydrates. */
+  skeletonMode?: { mode: ModeId; explainStyle?: ExplainStyleId }
 }) {
   const t = useMessages(messages)
   return (
     <>
-      <ComposerModeChip threadId={threadId} />
+      {skeletonMode ? <ComposerModeChipSkeleton {...skeletonMode} /> : <ComposerModeChip threadId={threadId} />}
       {offline ? (
         <InputGroupText className="text-xs text-destructive">
           <IconWifiOff />

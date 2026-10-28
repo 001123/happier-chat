@@ -176,6 +176,9 @@ export function ExplainCard({
   const [steps, setSteps] = React.useState<Array<{ start: number; size: number; target: PointerTarget }>>([])
   // The diagram nodes and table rows, columns and cells the narration names, and where, for the cursor to visit.
   const [marks, setMarks] = React.useState<Array<PointerMark>>([])
+  // Where each cue points once matched to the slide, and whether that is a whole build step; null when it points at
+  // nothing to follow.
+  const [cueAims, setCueAims] = React.useState<Array<{ at: PointerTarget; step: boolean } | null>>([])
   const styleNames = useExplainStyleNames()
   // The style whose rebuild offer the viewer put off; switching to another style offers again.
   const [deferredStyle, setDeferredStyle] = React.useState<ExplainStyleId | null>(null)
@@ -340,6 +343,18 @@ export function ExplainCard({
     const marked = Array.from(root.querySelectorAll<HTMLElement>('[data-build]'))
     const selector = marked.length ? '[data-build]' : 'li:not(li li)'
     const items = marked.length ? marked : Array.from(root.querySelectorAll<HTMLElement>(selector))
+    // A cue on a step points at that whole step, so the cursor runs along the bullet from its first word to its
+    // last while it is talked about, and a phrase also written in the heading or another bullet does not pull it
+    // away. A further cue on the same step would send it back to the start, so only the first one counts. On a
+    // slide that builds steps, a cue at nothing in its content (often the heading) is dropped: the cursor stays on
+    // the step being read instead.
+    const cueSteps = cues.map((cue) => (typeof cue.at === 'string' ? stepWith(items, cue.at) : -1))
+    const aims = cues.map((cue, i): { at: PointerTarget; step: boolean } | null => {
+      const step = cueSteps[i]!
+      if (step >= 0) return step === cueSteps[i - 1] ? null : { at: { selector, index: step }, step: true }
+      return items.length >= 2 && locateLines(root, cue.at, false).length === 0 ? null : { at: cue.at, step: false }
+    })
+    setCueAims((previous) => (JSON.stringify(previous) === JSON.stringify(aims) ? previous : aims))
     // Diagrams build too: nodes as the narration names them, arrows once both ends are up or their label is said.
     const diagram = diagramReveal(root, slide.narration ?? '', cues)
     if (!building) {
@@ -351,17 +366,21 @@ export function ExplainCard({
       return
     }
     for (const { el, start } of diagram) el.setAttribute('data-reveal', Math.max(0, start - lead) <= spoken ? 'shown' : 'hidden')
+    // A step a cue points at appears when its cue is said: the cue ties it to the narration even when the bullet is
+    // worded differently, or in another language, from what is read out.
+    const anchors: Array<number | undefined> = []
+    cueSteps.forEach((step, i) => {
+      if (step >= 0) anchors[step] = Math.min(anchors[step] ?? Infinity, cues[i]!.start)
+    })
     const starts =
       items.length < 2
         ? items.map(() => 0)
-        : revealStarts(slide.narration, items.map((el) => el.dataset.buildLabel ?? el.textContent ?? ''))
+        : revealStarts(slide.narration, items.map((el) => el.dataset.buildLabel ?? el.textContent ?? ''), anchors)
     // A cue shows the step it points at, and the steps before it, as the cursor gets there: pointing at a card
     // that has not appeared yet would point at nothing.
-    for (const cue of cues) {
-      const step = typeof cue.at === 'string' ? stepWith(items, cue.at) : -1
-      if (step < 0) continue
-      for (let i = 0; i <= step; i++) starts[i] = Math.min(starts[i]!, cue.start)
-    }
+    cueSteps.forEach((step, c) => {
+      for (let i = 0; i <= step; i++) starts[i] = Math.min(starts[i]!, cues[c]!.start)
+    })
     // A step appears as the cursor sets off for it, so it is there when the click lands.
     items.forEach((li, i) => li.setAttribute('data-reveal', Math.max(0, starts[i]! - lead) <= spoken ? 'shown' : 'hidden'))
     // The cursor traces the whole step, a card's title and text or a bullet with its sub-bullets, so it is
@@ -407,11 +426,17 @@ export function ExplainCard({
   // The cursor also follows the build, landing on each step as it appears, and visits the diagram nodes and table
   // rows the narration names, so it keeps moving when the cues are missing or do not match the narration. A cue
   // said at the same moment is more precise, so the others give way to it.
-  const saidWithCue = (at: number) => cues.some((cue) => cue.start - lead <= at && at < cue.start + cue.length)
+  const aimed = cues.flatMap((cue, i) => {
+    const aim = cueAims.length === cues.length ? cueAims[i] : { at: cue.at, step: false }
+    return aim ? [{ ...cue, at: aim.at, step: aim.step }] : []
+  })
+  const saidWithCue = (at: number) => aimed.some((cue) => cue.start - lead <= at && at < cue.start + cue.length)
   // Cues and steps click when the cursor lands on them, like a presenter pointing or bringing in a bullet;
   // walking a diagram only glides, so the clicks keep meaning "look here".
   const events: Array<{ from: number; start: number; length: number; at: PointerTarget; pace?: number; click: boolean }> = [
-    ...cues.map((cue) => ({ from: cue.start - lead, ...cue, click: true })),
+    // A cue on a step is traced until the narration moves on, so the cursor reaches the end of the bullet as its
+    // talk ends; other cues trace their phrase while it is said.
+    ...aimed.map(({ step, ...cue }) => ({ from: cue.start - lead, ...cue, length: step ? 0 : cue.length, click: true })),
     // A step is traced at about reading pace, not stretched over all the narration until the next one, so the
     // cursor underlines it while it appears and then rests at its end. It sets off early too, so the click lands
     // as the step appears.
@@ -427,11 +452,11 @@ export function ExplainCard({
       })),
     // Walking the diagram is only for when nothing else moves the cursor.
     ...(building ? marks : [])
-      .filter((mark) => !saidWithCue(mark.start) && !(mark.walk && (cues.length > 0 || steps.length > 1)))
+      .filter((mark) => !saidWithCue(mark.start) && !(mark.walk && (aimed.length > 0 || steps.length > 1)))
       .map((mark) => ({ from: mark.start - lead, start: mark.start, length: 0, at: mark.target, click: false })),
   ].sort((a, b) => a.from - b.from)
-  // Steps and marks have no phrase of their own, so they are traced until the narration moves on: across a row
-  // while it is talked about, down a column.
+  // Steps, marks and cues on a step are traced until the narration moves on: across a row while it is talked
+  // about, down a column, along a bullet.
   for (const [i, event] of events.entries()) {
     if (event.length) continue
     const span = (events[i + 1]?.start ?? caption.length) - event.start
@@ -503,7 +528,7 @@ export function ExplainCard({
       </div>
 
       <div className={cn('relative flex flex-col', fullscreen ? 'min-h-0 flex-1 overflow-y-auto' : 'min-h-72')}>
-        {(fullscreen || layout === 'title') && <SlideWaves tall={fullscreen} />}
+        <SlideBackdrop layout={layout} tall={fullscreen} />
         <div
           key={index}
           className={cn(
@@ -513,7 +538,7 @@ export function ExplainCard({
           )}
         >
           <div
-            className={cn('flex flex-col gap-3', layout === 'title' && 'items-center py-6 text-center')}
+            className={cn('flex flex-col gap-3', layout === 'title' && 'py-6 sm:px-6')}
             style={fullscreen ? { zoom: FULLSCREEN_ZOOM } : undefined}
           >
             <h3
@@ -524,6 +549,7 @@ export function ExplainCard({
             >
               {slide.title}
             </h3>
+            {layout === 'title' && <span aria-hidden className="h-1 w-12 rounded-full bg-primary" />}
             <div
               ref={contentRef}
               // Lets CSS hide build steps the moment they render, before the layout effect has marked them.
@@ -764,20 +790,76 @@ function Subtitle({ text, spoken }: { text: string; spoken: number }) {
   )
 }
 
-/** Layered waves across the top of a slide, tinted with the theme color, for title slides and full screen. */
-function SlideWaves({ tall }: { tall: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 1200 200"
-      preserveAspectRatio="none"
-      className={cn('pointer-events-none absolute inset-x-0 top-0 w-full text-primary', tall ? 'h-1/3' : 'h-20')}
-    >
-      <path d="M0 0H1200V120C1000 170 820 90 600 120S200 180 0 130Z" fill="currentColor" opacity="0.06" />
-      <path d="M0 0H1200V80C980 130 800 50 600 85S220 140 0 95Z" fill="currentColor" opacity="0.08" />
-      <path d="M0 0H1200V45C1020 85 780 20 600 50S240 95 0 55Z" fill="currentColor" opacity="0.1" />
-    </svg>
-  )
+/**
+ * A backdrop per slide layout, in the theme color, so a lesson does not wear one pattern throughout: a warm wash
+ * for the title, a notebook dot grid for prose, graph paper for cards, a margin rule for quizzes. Visual slides
+ * stay plain so their drawings read cleanly.
+ */
+function SlideBackdrop({ layout, tall }: { layout: string; tall: boolean }) {
+  const fade = (from: string, stop = '70%') => {
+    const mask = `radial-gradient(ellipse at ${from}, black, transparent ${stop})`
+    return { maskImage: mask, WebkitMaskImage: mask }
+  }
+  const cell = tall ? 28 : 20
+  const base = 'pointer-events-none absolute inset-0 text-primary'
+  switch (layout) {
+    case 'title':
+      return (
+        <>
+          <div
+            aria-hidden
+            className={cn(base, 'opacity-15')}
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 100% 0%, currentColor, transparent 45%), radial-gradient(circle at 0% 100%, currentColor, transparent 35%)',
+            }}
+          />
+          <div
+            aria-hidden
+            className={cn(base, 'opacity-30')}
+            style={{
+              backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1.5px)',
+              backgroundSize: `${cell}px ${cell}px`,
+              ...fade('top right', '45%'),
+            }}
+          />
+        </>
+      )
+    case 'content':
+      return (
+        <div
+          aria-hidden
+          className={cn(base, 'opacity-20')}
+          style={{
+            backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1.5px)',
+            backgroundSize: `${cell}px ${cell}px`,
+            ...fade('top right', '55%'),
+          }}
+        />
+      )
+    case 'cards':
+      return (
+        <div
+          aria-hidden
+          className={cn(base, 'opacity-10')}
+          style={{
+            backgroundImage:
+              'linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)',
+            backgroundSize: `${cell * 1.5}px ${cell * 1.5}px`,
+            ...fade('bottom left', '75%'),
+          }}
+        />
+      )
+    case 'quiz':
+      return (
+        <>
+          <div aria-hidden className={cn(base, 'bg-primary/5')} />
+          <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-primary/60" />
+        </>
+      )
+    default:
+      return null
+  }
 }
 
 type Card = NonNullable<Slide['cards']>[number]
@@ -930,13 +1012,18 @@ const CODE_LINE = '[data-streamdown="code-block-body"] code > span'
 const POINTABLE = `h3, li, p, td, th, ${CODE_LINE}, text, [data-point]`
 
 /**
- * Where in the narration each bullet should appear: where the narration mentions it, else spread evenly between
- * its mentioned neighbours. The first bullet shows from the start unless it is mentioned later, and bullets
- * never appear out of order.
+ * Where in the narration each bullet should appear: at its anchor (where a cue on it is said), else where the
+ * narration mentions it, else spread evenly between its placed neighbours. The first bullet shows from the start
+ * unless it is placed later, and bullets never appear out of order.
  */
-function revealStarts(narration: string, texts: Array<string>) {
+function revealStarts(narration: string, texts: Array<string>, anchors: Array<number | undefined> = []) {
   const found: Array<number> = []
   for (const [i, text] of texts.entries()) {
+    const anchor = anchors[i]
+    if (anchor !== undefined) {
+      found.push(anchor)
+      continue
+    }
     const from = Math.max(0, ...found)
     // A long bullet is rarely read out word for word, but its opening words (a card's name) usually are.
     const words = text.toLowerCase().match(TOKEN) ?? []
@@ -1430,6 +1517,8 @@ const ARC_MAX_PX = 36
 const ARC_MIN_PX = 40
 // Within this many pixels of the cue, or of the text it points at, the cursor counts as arrived and clicks.
 const POINTER_CLICK_PX = 4
+// Share of a move the cursor must cover before touching the target's text counts as landing.
+const LAND_PROGRESS = 0.7
 const PARTICLES = 8
 // The arrow tip sits at (2, 2) in the 24px cursor.
 const TIP = 2
@@ -1562,10 +1651,14 @@ function SlidePointer({
       // as it gets there instead of after the spring has crept the last pixels.
       // A target still hidden by the build (a cue matched to no step) keeps the cursor waiting at its start, so
       // it never clicks on empty space; the next narration word aims again and lands it once it shows.
+      // Only the line the move heads for counts, and only once most of the move is done: the cursor can start on,
+      // or cross, another line of the target, and clicking there would burst before it has visibly moved.
       const container = el.parentElement
+      const first = lines.current.slice(0, 1)
+      const traveled = !current.arc || current.arc.progress >= LAND_PROGRESS
       if (
         approaching.current &&
-        (distance < POINTER_CLICK_PX || onLines(lines.current, current.x + current.ox, current.y + current.oy)) &&
+        (distance < POINTER_CLICK_PX || (traveled && onLines(first, current.x + current.ox, current.y + current.oy))) &&
         !(container && inHidden(container, current.goal.x, current.goal.y))
       ) {
         approaching.current = false

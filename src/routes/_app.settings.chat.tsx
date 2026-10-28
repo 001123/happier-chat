@@ -1,9 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { IconRotate } from '@tabler/icons-react'
 
+import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   CUSTOM_INSTRUCTIONS_MAX,
+  DEFAULTS,
+  resetChatSettings,
   setChatSetting,
   useChatSettings,
   useChatToggles,
@@ -15,6 +19,7 @@ const messages = defineMessages({
     title: 'Trò chuyện · Cài đặt · Happier Chat',
     heading: 'Trò chuyện',
     intro: 'Chọn những gì hiển thị trong cuộc trò chuyện và cách trợ lý trả lời.',
+    reset: 'Khôi phục mặc định',
     instructions: 'Hướng dẫn tuỳ chỉnh',
     instructionsHelp: 'Cho trợ lý biết về bạn và cách bạn muốn được trả lời. Áp dụng cho mọi cuộc trò chuyện.',
     placeholder: 'Ví dụ: Tôi là lập trình viên frontend. Hãy trả lời ngắn gọn, ưu tiên ví dụ code TypeScript.',
@@ -23,6 +28,7 @@ const messages = defineMessages({
     title: 'Chat · Settings · Happier Chat',
     heading: 'Chat',
     intro: 'Choose what shows up in the conversation and how the assistant replies.',
+    reset: 'Reset to default',
     instructions: 'Custom instructions',
     instructionsHelp: 'Tell the assistant about yourself and how you want it to respond. Applies to every conversation.',
     placeholder: 'e.g. I am a frontend developer. Keep answers short and prefer TypeScript code examples.',
@@ -38,14 +44,27 @@ function ChatSettingsPage() {
   const t = useMessages(messages)
   const settings = useChatSettings()
   const chatToggles = useChatToggles()
+  const pageKeys = [...chatToggles.map((option) => option.key), 'customInstructions'] as const
+  const customized = pageKeys.some((key) => settings[key] !== DEFAULTS[key])
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h2 className="font-serif text-2xl tracking-tight">{t.heading}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t.intro}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-serif text-2xl tracking-tight">{t.heading}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t.intro}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!customized}
+          onClick={() => resetChatSettings(pageKeys)}
+        >
+          <IconRotate />
+          {t.reset}
+        </Button>
       </div>
 
       <div className="divide-y rounded-xl border bg-card">

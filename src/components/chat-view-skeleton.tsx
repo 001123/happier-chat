@@ -100,7 +100,8 @@ export function ChatViewSkeleton({ threadId }: { threadId: string }) {
   // The thread list comes with the page and a thread exists once it has a message, so the server already knows
   // which layout to draw.
   const { threads } = useLoaderData({ from: '/_app' })
-  const started = threads.some((thread) => thread.id === threadId)
+  const thread = threads.find((item) => item.id === threadId)
+  const started = thread !== undefined
 
   return (
     <div className="flex h-dvh flex-col" data-chat-started={started ? '' : undefined}>
@@ -123,7 +124,11 @@ export function ChatViewSkeleton({ threadId }: { threadId: string }) {
               autoFocus
             />
             <InputGroupAddon align="block-end" className="px-3 pb-3">
-              <ComposerTools threadId={threadId} skeleton />
+              <ComposerTools
+                threadId={threadId}
+                skeleton
+                skeletonMode={thread?.mode ? { mode: thread.mode, explainStyle: thread.explainStyle } : undefined}
+              />
               <InputGroupButton type="button" variant="default" size="icon-sm" className="rounded-lg">
                 <IconArrowUp />
               </InputGroupButton>
