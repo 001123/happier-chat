@@ -108,6 +108,40 @@ export function speechUsageMiddleware(
   }
 }
 
+/**
+ * Prices calls recorded before their model had a catalog price, at the price in effect when each call happened.
+ * Runs after an admin catalog write. Character-billed OpenRouter speech reports no tokens, so it stays unpriced.
+ */
+export function priceUnpricedUsage() {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `select id, kind, provider, model, input_tokens as inputTokens, output_tokens as outputTokens,
+        cache_read_tokens as cacheReadTokens, cache_write_tokens as cacheWriteTokens, created_at as createdAt
+       from usage_events where cost_usd is null and provider != 'openrouter' and input_tokens + output_tokens > 0`,
+    )
+    .all() as Array<
+    Pick<UsageModelRow, 'kind' | 'provider' | 'model' | 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'> & {
+      id: number
+      createdAt: number
+    }
+  >
+  const update = db.prepare('update usage_events set cost_usd = ? where id = ?')
+  for (const row of rows) {
+    const cost = usageCost(
+      {
+        promptTokens: row.inputTokens,
+        completionTokens: row.outputTokens,
+        totalTokens: row.inputTokens + row.outputTokens,
+        promptTokensDetails: { cachedTokens: row.cacheReadTokens, cacheWriteTokens: row.cacheWriteTokens },
+      },
+      findCatalogModel(row.provider, row.model, row.createdAt)?.cost,
+      { audio: row.kind === 'tts' },
+    )
+    if (cost !== undefined) update.run(cost, row.id)
+  }
+}
+
 const DAY = 24 * 60 * 60 * 1000
 
 export function usageSummary(userId: string, days: number | null): UsageSummary {
@@ -136,7 +170,7 @@ export function usageSummary(userId: string, days: number | null): UsageSummary 
   return { models, daily, upcoming: upcomingPrices(userId) }
 }
 
-/** How far ahead a price change is announced on the usage page. */
+/** How far ahead a price drop is announced on the usage page; a running discount shows however long it lasts. */
 const UPCOMING_WINDOW = 90 * DAY
 
 /** Price changes coming up for models used in the last 30 days, with that usage priced now and after. */
@@ -155,7 +189,7 @@ function upcomingPrices(userId: string): Array<UpcomingPrice> {
   const upcoming: Array<UpcomingPrice> = []
   for (const row of rows) {
     const next = findNextPrice(row.provider, row.model, now)
-    if (!next || next.effectiveFrom - now > UPCOMING_WINDOW) continue
+    if (!next) continue
     const current = findCatalogModel(row.provider, row.model, now)
     // Token counts add up, so pricing the month's totals equals pricing each call.
     const usage = {
@@ -168,8 +202,10 @@ function upcomingPrices(userId: string): Array<UpcomingPrice> {
     const currentMonthly = usageCost(usage, current?.cost, { audio })
     const nextMonthly = usageCost(usage, next.cost, { audio })
     if (currentMonthly === undefined || nextMonthly === undefined) continue
+    if (nextMonthly <= currentMonthly && next.effectiveFrom - now > UPCOMING_WINDOW) continue
     upcoming.push({
       kind: row.kind,
+      provider: row.provider,
       model: row.model,
       name: current?.name ?? row.model,
       effectiveFrom: next.effectiveFrom,

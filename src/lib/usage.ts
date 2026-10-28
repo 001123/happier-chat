@@ -15,9 +15,13 @@ export type UsageModelRow = {
   unpriced: number
 }
 
-/** A scheduled price change of a model the user used lately, with last 30 days' usage priced both ways. */
+/**
+ * A scheduled price change of a model the user used lately, with last 30 days' usage priced both ways.
+ * A rise (`nextMonthly > currentMonthly`) means the current price is a discount that ends at `effectiveFrom`.
+ */
 export type UpcomingPrice = {
   kind: UsageKind
+  provider: string
   model: string
   name: string
   effectiveFrom: number

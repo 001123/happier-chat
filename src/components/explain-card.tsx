@@ -23,14 +23,16 @@ import { code } from '@streamdown/code'
 
 import { useExplainStyleNames } from '@/components/chat-modes'
 import { runnableCodeRenderers } from '@/components/runnable-code-block'
+import { diagramRenderer } from '@/components/slide-diagram'
 import { svgRenderer } from '@/components/slide-svg'
+import { QuizCode } from '@/components/quiz-code'
 import { SlideVisual } from '@/components/slide-visual'
 import { Button } from '@/components/ui/button'
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
 import { defineMessages, useMessages } from '@/lib/i18n'
-import { peleMermaid } from '@/lib/pele-mermaid'
+import { peleMermaid, preloadDiagrams } from '@/lib/pele-mermaid'
 import { markDrawable } from '@/lib/draw-in'
 import { appHotkeys, useShortcutLabel, withShortcut } from '@/lib/shortcuts'
 import { createPersistedStore, useStoreValue } from '@/lib/store'
@@ -42,7 +44,8 @@ type Speaker = ReturnType<typeof useSpeaker>
 type Slide = ExplainDeckInput['slides'][number]
 
 // Slides also draw ```svg blocks, which the chat shows as code.
-const STREAMDOWN_PLUGINS = { code, mermaid: peleMermaid, renderers: [...runnableCodeRenderers, svgRenderer] }
+// Slides draw their own diagrams, rendered ahead and without code-block chrome; the plugin stays as a fallback.
+const STREAMDOWN_PLUGINS = { code, mermaid: peleMermaid, renderers: [...runnableCodeRenderers, svgRenderer, diagramRenderer] }
 const FIGURE_ONLY = /^\s*```(?:mermaid|svg)[^\n]*\n[\s\S]*?```\s*$/
 
 const RATES = [0.75, 1, 1.25, 1.5, 2]
@@ -173,12 +176,12 @@ export function ExplainCard({
   const [answers, setAnswers] = React.useState<Record<number, number>>({})
   const [revision, setRevision] = React.useState('')
   // Where in the narration each built step of the slide appears, and its text, so the cursor can follow the build.
-  const [steps, setSteps] = React.useState<Array<{ start: number; size: number; target: PointerTarget }>>([])
+  const [steps, setSteps] = React.useState<Array<{ start: number; text: string; target: PointerTarget }>>([])
   // The diagram nodes and table rows, columns and cells the narration names, and where, for the cursor to visit.
   const [marks, setMarks] = React.useState<Array<PointerMark>>([])
-  // Where each cue points once matched to the slide, and whether that is a whole build step; null when it points at
-  // nothing to follow.
-  const [cueAims, setCueAims] = React.useState<Array<{ at: PointerTarget; step: boolean } | null>>([])
+  // Where each cue points once matched to the slide, and whether it is traced until the narration moves on (a whole
+  // build step, a table row or column); null when it points at nothing to follow.
+  const [cueAims, setCueAims] = React.useState<Array<CueAim | null>>([])
   const styleNames = useExplainStyleNames()
   // The style whose rebuild offer the viewer put off; switching to another style offers again.
   const [deferredStyle, setDeferredStyle] = React.useState<ExplainStyleId | null>(null)
@@ -238,6 +241,11 @@ export function ExplainCard({
   React.useEffect(() => {
     if (playing && ready) preloadSlide(index + 1)
   }, [playing, ready, index, index + 1 < readyCount])
+  // Diagrams are drawn as soon as their slide has streamed in, so each slide shows its diagram on its first frame
+  // instead of a placeholder that pops into a drawing while the narration has already started.
+  React.useEffect(() => {
+    for (const ready of slides.slice(0, readyCount)) preloadDiagrams(ready.content)
+  }, [readyCount])
   function warmUp() {
     if (!playing) preloadSlide(ended ? 0 : index)
   }
@@ -349,10 +357,16 @@ export function ExplainCard({
     // slide that builds steps, a cue at nothing in its content (often the heading) is dropped: the cursor stays on
     // the step being read instead.
     const cueSteps = cues.map((cue) => (typeof cue.at === 'string' ? stepWith(items, cue.at) : -1))
-    const aims = cues.map((cue, i): { at: PointerTarget; step: boolean } | null => {
+    const aims = cues.map((cue, i): CueAim | null => {
       const step = cueSteps[i]!
-      if (step >= 0) return step === cueSteps[i - 1] ? null : { at: { selector, index: step }, step: true }
-      return items.length >= 2 && locateLines(root, cue.at, false).length === 0 ? null : { at: cue.at, step: false }
+      if (step >= 0) {
+        const text = (items[step]!.textContent ?? '').trim()
+        return step === cueSteps[i - 1] ? null : { at: { selector, index: step }, span: true, text }
+      }
+      // A cue in a table points at the row, column or cell it names, the way a presenter would.
+      const table = typeof cue.at === 'string' ? tableAim(root, cue.at, slide.narration ?? '', cue.start) : null
+      if (table) return table
+      return items.length >= 2 && locateLines(root, cue.at, false).length === 0 ? null : { at: cue.at, span: false }
     })
     setCueAims((previous) => (JSON.stringify(previous) === JSON.stringify(aims) ? previous : aims))
     // Diagrams build too: nodes as the narration names them, arrows once both ends are up or their label is said.
@@ -386,8 +400,8 @@ export function ExplainCard({
     // The cursor traces the whole step, a card's title and text or a bullet with its sub-bullets, so it is
     // pointed at as an element rather than looked up by its text, which could also be written elsewhere.
     const next = items.flatMap((el, index) => {
-      const size = (el.textContent ?? '').trim().length
-      return size ? [{ start: starts[index]!, size, target: { selector, index } }] : []
+      const text = (el.textContent ?? '').trim()
+      return text ? [{ start: starts[index]!, text, target: { selector, index } }] : []
     })
     setSteps((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next))
     // The cursor never visits a diagram part before it is drawn: an arrow's label said before both its ends are up
@@ -427,16 +441,16 @@ export function ExplainCard({
   // rows the narration names, so it keeps moving when the cues are missing or do not match the narration. A cue
   // said at the same moment is more precise, so the others give way to it.
   const aimed = cues.flatMap((cue, i) => {
-    const aim = cueAims.length === cues.length ? cueAims[i] : { at: cue.at, step: false }
-    return aim ? [{ ...cue, at: aim.at, step: aim.step }] : []
+    const aim = cueAims.length === cues.length ? cueAims[i] : { at: cue.at, span: false }
+    return aim ? [{ ...cue, at: aim.at, span: aim.span, text: aim.text }] : []
   })
   const saidWithCue = (at: number) => aimed.some((cue) => cue.start - lead <= at && at < cue.start + cue.length)
   // Cues and steps click when the cursor lands on them, like a presenter pointing or bringing in a bullet;
   // walking a diagram only glides, so the clicks keep meaning "look here".
-  const events: Array<{ from: number; start: number; length: number; at: PointerTarget; pace?: number; click: boolean }> = [
-    // A cue on a step is traced until the narration moves on, so the cursor reaches the end of the bullet as its
-    // talk ends; other cues trace their phrase while it is said.
-    ...aimed.map(({ step, ...cue }) => ({ from: cue.start - lead, ...cue, length: step ? 0 : cue.length, click: true })),
+  const events: Array<TraceEvent> = [
+    // A cue on a step, a table row or a column is traced until the narration moves on, so the cursor reaches its
+    // end as its talk ends; other cues trace their phrase while it is said.
+    ...aimed.map(({ span, ...cue }) => ({ from: cue.start - lead, ...cue, length: span ? 0 : cue.length, click: true })),
     // A step is traced at about reading pace, not stretched over all the narration until the next one, so the
     // cursor underlines it while it appears and then rests at its end. It sets off early too, so the click lands
     // as the step appears.
@@ -447,7 +461,8 @@ export function ExplainCard({
         start: step.start,
         length: 0,
         at: step.target,
-        pace: step.size * TRACE_PACE,
+        text: step.text,
+        pace: step.text.length * TRACE_PACE,
         click: true,
       })),
     // Walking the diagram is only for when nothing else moves the cursor.
@@ -455,12 +470,17 @@ export function ExplainCard({
       .filter((mark) => !saidWithCue(mark.start) && !(mark.walk && (aimed.length > 0 || steps.length > 1)))
       .map((mark) => ({ from: mark.start - lead, start: mark.start, length: 0, at: mark.target, click: false })),
   ].sort((a, b) => a.from - b.from)
-  // Steps, marks and cues on a step are traced until the narration moves on: across a row while it is talked
-  // about, down a column, along a bullet.
+  // Steps, marks and cues on a step, row or column are traced until the narration moves on: across a row while it
+  // is talked about, down a column, along a bullet.
+  // A long bullet is followed word by word: where the narration says words written on it, the cursor goes to them,
+  // so it points at the part being read rather than sweeping evenly. A step said in its own words is traced at
+  // reading pace instead, and then rests at its end.
   for (const [i, event] of events.entries()) {
     if (event.length) continue
     const span = (events[i + 1]?.start ?? caption.length) - event.start
-    event.length = Math.max(1, Math.min(span, event.pace ?? span))
+    const said = event.text ? alignTrace(event.text, caption, event.start, event.start + span) : []
+    if (said.length > 0) event.said = said
+    event.length = Math.max(1, said.length > 0 ? span : Math.min(span, event.pace ?? span))
   }
   const event = events.filter((event) => event.from <= spoken).at(-1)
   // Trace the heading until the narration reaches the first cue or step, or over all of it when there is none.
@@ -468,7 +488,7 @@ export function ExplainCard({
   const pointerClick = event?.click ?? false
   // How far the phrase has been read, so the cursor traces its text while it is said and rests at the end after.
   const pointerSweep = event
-    ? Math.min(1, Math.max(0, (spoken - event.start) / Math.max(1, event.length)))
+    ? traceShare(event, spoken)
     : Math.min(1, Math.max(0, spoken / Math.max(1, events[0]?.from ?? caption.length)))
   // A visual slide's own motion shows where to look, so the cursor stays away from it.
   const pointerVisible = playing && ready && spoken >= 0 && part === 0 && slide.layout !== 'visual'
@@ -932,6 +952,7 @@ function SlideQuiz({
       <p className="font-semibold text-balance">
         <InlineCode text={quiz.question} />
       </p>
+      <QuizCode code={quiz.code} />
       <div className="flex flex-col gap-2">
         {(quiz.options ?? []).map((option, i) => {
           const state = !answered ? 'idle' : i === quiz.answer ? 'right' : i === picked ? 'wrong' : 'dim'
@@ -1223,16 +1244,51 @@ function tableSpan(el: Element | null): Array<Element> | null {
   return column === 0 ? [row] : null
 }
 
+/**
+ * Where a cue at some table text points: a header stands for its column and a row's first cell for the row, both
+ * traced while they are talked about; any other cell is pointed at alone. The same value often sits in several rows
+ * ("O(1)", "Có"), so a cell whose row the narration names near the cue wins over the first one written.
+ */
+function tableAim(root: HTMLElement, at: string, narration: string, said: number): CueAim | null {
+  const needle = shownText(at).toLowerCase()
+  if (!needle) return null
+  const cells = Array.from(root.querySelectorAll<HTMLElement>('td, th'))
+  const text = (cell: Element) => (cell.textContent ?? '').trim().toLowerCase()
+  const equal = cells.filter((cell) => text(cell) === needle)
+  const found = equal.length ? equal : cells.filter((cell) => findWords(text(cell), needle) >= 0)
+  if (found.length === 0) return null
+  const near = (cell: Element) => {
+    const label = cell.parentElement?.firstElementChild?.textContent ?? ''
+    return label.trim().length >= 2 && mentions(narration, label).some((start) => Math.abs(start - said) <= TABLE_NEAR_CHARS)
+  }
+  const cell = found.find(near) ?? found[0]!
+  const row = cell.parentElement!
+  const column = Array.from(row.children).indexOf(cell)
+  const read = (els: Iterable<Element>) => Array.from(els, (el) => (el.textContent ?? '').trim()).join(' ')
+  if (row.closest('thead')) {
+    const selector = `tr > :nth-child(${column + 1})`
+    return { at: { selector }, span: true, text: read(root.querySelectorAll(selector)) }
+  }
+  if (column === 0) {
+    const index = Array.from(root.querySelectorAll('tr')).indexOf(row as HTMLTableRowElement)
+    return { at: { selector: 'tr', index }, span: true, text: read(row.children) }
+  }
+  return { at: { selector: 'td, th', index: cells.indexOf(cell) }, span: false }
+}
+// How close, in narration characters, a row's name must be said to a cue to pick that row's copy of a value.
+const TABLE_NEAR_CHARS = 80
+
 /** A cue's target as the slide shows it: models copy the Markdown source, like `[]` or **bold**. */
 const shownText = (text: string) => text.replace(/`+|\*\*|__/g, '').trim()
 
 /**
  * The lines of text inside some elements, relative to origin. It measures the text nodes, not the blocks: a nested
- * paragraph's box spans the whole column, not its words, and the cells of a table row merge into one line.
+ * paragraph's box spans the whole column, not its words. Table cells are read one after another, a row left to
+ * right and a column top to bottom, so a cell that wraps is traced whole before the next one.
  */
 function textLines(elements: Array<Element>, origin: DOMRect) {
-  const rects: Array<DOMRect> = []
-  for (const el of elements) {
+  const measure = (el: Element) => {
+    const rects: Array<DOMRect> = []
     const inside = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
     for (let node = inside.nextNode(); node; node = inside.nextNode()) {
       if (!node.textContent?.trim()) continue
@@ -1240,8 +1296,12 @@ function textLines(elements: Array<Element>, origin: DOMRect) {
       range.selectNodeContents(node)
       rects.push(...range.getClientRects())
     }
+    return rects
   }
-  const lines = lineBoxes(rects, origin)
+  const cells = elements.flatMap((el) => (el.matches('tr') ? Array.from(el.children) : [el]))
+  const lines = cells.every((el) => el.matches('td, th'))
+    ? cells.flatMap((cell) => lineBoxes(measure(cell), origin))
+    : lineBoxes(elements.flatMap(measure), origin)
   return lines.length > 0 ? lines : lineBoxes(elements.map((el) => el.getBoundingClientRect()), origin)
 }
 
@@ -1250,6 +1310,20 @@ function textLines(elements: Array<Element>, origin: DOMRect) {
  * or some text inside them.
  */
 type PointerTarget = string | { selector: string; index?: number; text?: string }
+// text is what a traced target reads, for following the narration along it.
+type CueAim = { at: PointerTarget; span: boolean; text?: string }
+// A move of the cursor: from where in the narration it sets off, the phrase it traces from start for length
+// characters, and the words of its text said along the way.
+type TraceEvent = {
+  from: number
+  start: number
+  length: number
+  at: PointerTarget
+  text?: string
+  pace?: number
+  said?: Array<[number, number]>
+  click: boolean
+}
 // A walk mark is not named by the narration, only spread over it.
 type PointerMark = { start: number; target: PointerTarget; walk?: boolean }
 const targetKey = (target: PointerTarget) => (typeof target === 'string' ? target : JSON.stringify(target))
@@ -1502,6 +1576,44 @@ function pointAlong(lines: Array<DOMRect>, share: number) {
     return { x: line.left + Math.min(Math.max(distance, inset), line.width - inset), y: line.top + line.height * 0.75 }
   }
   return null
+}
+
+/**
+ * Where the narration says words written on a step, as narration offsets paired with how far into the step's text
+ * they are (0 to 1), in order. Only two words said in a row and written in a row count: Vietnamese syllables like
+ * "của" or "là" are everywhere, a pair of them is not. The text only moves forward, so a word said again later
+ * does not send the cursor back.
+ */
+function alignTrace(text: string, narration: string, from: number, to: number) {
+  const own = Array.from(text.toLowerCase().matchAll(TOKEN))
+  const said = Array.from(narration.toLowerCase().matchAll(TOKEN)).filter((m) => m.index >= from && m.index < to)
+  const points: Array<[number, number]> = []
+  let next = 0
+  for (let i = 0; i + 1 < said.length; i++) {
+    let j = next
+    while (j + 1 < own.length && !(own[j]![0] === said[i]![0] && own[j + 1]![0] === said[i + 1]![0])) j++
+    if (j + 1 >= own.length) continue
+    for (const [w, o] of [[i, j], [i + 1, j + 1]] as const) {
+      if ((points.at(-1)?.[0] ?? -1) >= said[w]!.index) continue
+      points.push([said[w]!.index, own[o]!.index / text.length])
+    }
+    next = j + 1
+  }
+  return points
+}
+
+/** How far along its target an event's cursor is: between the words said on it, or evenly over its length. */
+function traceShare(event: TraceEvent, spoken: number) {
+  const end = event.start + event.length
+  const stops: Array<[number, number]> = [[event.start, 0], ...(event.said ?? []), [end, 1]]
+  if (spoken <= event.start) return 0
+  for (let i = 1; i < stops.length; i++) {
+    const [at, share] = stops[i]!
+    if (spoken > at) continue
+    const [prevAt, prevShare] = stops[i - 1]!
+    return prevShare + ((share - prevShare) * (spoken - prevAt)) / Math.max(1, at - prevAt)
+  }
+  return 1
 }
 
 // How many characters of narration the cursor spends tracing each character of a step's text.

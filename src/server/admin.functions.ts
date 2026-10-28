@@ -15,6 +15,7 @@ import {
   setScheduledPrice,
 } from './catalog.server'
 import { assertSameOrigin } from './session.server'
+import { priceUnpricedUsage } from './usage.server'
 import { defineMessages, getLocale } from '@/lib/i18n'
 
 const messages = defineMessages({
@@ -47,7 +48,9 @@ export const applyCatalogSync = createServerFn({ method: 'POST' })
   .validator(z.object({ token: z.string().uuid() }))
   .handler(async ({ data }) => {
     assertSameOrigin()
-    return applySync(data.token)
+    const meta = applySync(data.token)
+    priceUnpricedUsage()
+    return meta
   })
 
 const tokens = z.number().int().positive().max(100_000_000)
@@ -79,6 +82,7 @@ export const updateCatalogOverride = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     assertSameOrigin()
     setCatalogOverride(data.providerId, data.modelId, data.override)
+    priceUnpricedUsage()
     return { ok: true }
   })
 
@@ -114,6 +118,7 @@ export const addCatalogModel = createServerFn({ method: 'POST' })
       attachment: false,
       openWeights: false,
     })
+    priceUnpricedUsage()
     return { ok: true }
   })
 
@@ -141,6 +146,7 @@ export const scheduleCatalogPrice = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     assertSameOrigin()
     setScheduledPrice(data.providerId, data.modelId, { effectiveFrom: data.effectiveFrom, cost: data.cost })
+    priceUnpricedUsage()
     return { ok: true }
   })
 

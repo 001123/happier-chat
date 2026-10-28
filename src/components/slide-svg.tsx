@@ -3,6 +3,7 @@ import type { CustomRenderer, CustomRendererProps } from 'streamdown'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { markDrawable } from '@/lib/draw-in'
+import { useHydrated } from '@/lib/hydrated'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { sanitizeSvg } from '@/lib/sanitize-svg'
 
@@ -15,22 +16,26 @@ const messages = defineMessages({
 const DRAWN = '[data-build] :is(path, line, polyline, polygon, circle, ellipse, rect)'
 
 /**
- * A lesson slide's ```svg drawing. It is sanitized in the browser, so the server and the first render show a
- * placeholder, and so does a drawing still streaming. Its <g data-say> groups become build steps, which the lesson
+ * A lesson slide's ```svg drawing. It is sanitized in the browser, so the server and the hydration pass show a
+ * placeholder, and so does a drawing still streaming; a slide opened later draws it on its first frame, and one
+ * that showed the placeholder fades it in. Its <g data-say> groups become build steps, which the lesson
  * reveals and draws in as the narrator says their words.
  */
 function SlideSvg({ code, isIncomplete }: CustomRendererProps) {
   const t = useMessages(messages)
   const id = `svg${React.useId().replace(/[^\w-]/g, '')}`
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
-  const markup = React.useMemo(() => (mounted && !isIncomplete ? sanitizeSvg(code, id) : null), [mounted, isIncomplete, code, id])
+  const hydrated = useHydrated()
+  const markup = React.useMemo(() => (hydrated && !isIncomplete ? sanitizeSvg(code, id) : null), [hydrated, isIncomplete, code, id])
+  const waited = React.useRef(false)
   const ref = React.useRef<HTMLDivElement>(null)
   React.useLayoutEffect(() => {
     ref.current?.querySelectorAll(DRAWN).forEach(markDrawable)
   }, [markup])
 
-  if (markup === null) return <Skeleton className="my-2 aspect-video w-full rounded-xl" />
+  if (markup === null) {
+    waited.current = true
+    return <Skeleton aria-hidden className="my-2 aspect-video max-h-[22rem] w-full rounded-xl" />
+  }
   if (!markup) {
     return (
       <p className="my-2 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -42,6 +47,7 @@ function SlideSvg({ code, isIncomplete }: CustomRendererProps) {
     <div
       ref={ref}
       className="slide-svg my-2 flex justify-center [&_svg]:h-auto [&_svg]:max-h-[22rem] [&_svg]:w-full"
+      data-fade-in={waited.current || undefined}
       dangerouslySetInnerHTML={{ __html: markup }}
     />
   )

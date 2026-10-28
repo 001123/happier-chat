@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { IconRotate } from '@tabler/icons-react'
+import { Fragment } from 'react'
 import { cn } from 'cn'
 
 import { Button } from '@/components/ui/button'
@@ -147,9 +148,8 @@ function DisplaySettingsPage() {
           <SettingRow label={t.sansFont} description={t.sansFontHelp} inline>
             <FontPicker
               slot="sans"
-              fonts={SANS_FONTS}
+              groups={[{ label: 'Google Fonts', fonts: SANS_FONTS }]}
               defaultLabel={`${t.defaultFont} · Geist`}
-              googleLabel="Google Fonts"
               value={settings.sansFont}
               onChange={(sansFont) => setDisplaySettings({ sansFont })}
             />
@@ -157,9 +157,11 @@ function DisplaySettingsPage() {
           <SettingRow label={t.serifFont} description={t.serifFontHelp} inline>
             <FontPicker
               slot="serif"
-              fonts={SERIF_FONTS}
+              groups={[
+                { label: 'Google Fonts · Serif', fonts: SERIF_FONTS },
+                { label: 'Google Fonts · Sans', fonts: SANS_FONTS },
+              ]}
               defaultLabel={`${t.defaultFont} · Source Serif`}
-              googleLabel="Google Fonts"
               value={settings.serifFont}
               onChange={(serifFont) => setDisplaySettings({ serifFont })}
             />
@@ -257,25 +259,25 @@ const DEFAULT_FONT = 'default'
 
 function FontPicker({
   slot,
-  fonts,
+  groups,
   defaultLabel,
-  googleLabel,
   value,
   onChange,
 }: {
   slot: FontSlot
-  fonts: ReadonlyArray<GoogleFont>
+  groups: ReadonlyArray<{ label: string; fonts: ReadonlyArray<GoogleFont> }>
   defaultLabel: string
-  googleLabel: string
   value: string | null
   onChange: (value: string | null) => void
 }) {
-  const options = [
-    { value: DEFAULT_FONT, label: defaultLabel, fontFamily: BUNDLED_FONTS[slot] },
-    ...fonts.map((font) => ({ value: font.family, label: font.family, fontFamily: fontStack(slot, font.family) })),
-  ]
-  const selected = options.find((option) => option.value === (value ?? DEFAULT_FONT)) ?? options[0]
-  const [bundled, ...google] = options
+  const bundled = { value: DEFAULT_FONT, label: defaultLabel, fontFamily: BUNDLED_FONTS[slot] }
+  const google = groups.map((group) => ({
+    label: group.label,
+    options: group.fonts.map((font) => ({ value: font.family, label: font.family, fontFamily: fontStack(slot, font.family) })),
+  }))
+  const options = [bundled, ...google.flatMap((group) => group.options)]
+  const selected = options.find((option) => option.value === (value ?? DEFAULT_FONT)) ?? bundled
+  const fonts = groups.flatMap((group) => group.fonts)
   return (
     <>
       <link rel="stylesheet" href={fontPreviewStylesheetUrl(fonts)} precedence="default" />
@@ -291,13 +293,17 @@ function FontPicker({
           <SelectGroup>
             <FontItem option={bundled} />
           </SelectGroup>
-          <SelectSeparator />
-          <SelectGroup>
-            <SelectLabel>{googleLabel}</SelectLabel>
-            {google.map((option) => (
-              <FontItem key={option.value} option={option} />
-            ))}
-          </SelectGroup>
+          {google.map((group) => (
+            <Fragment key={group.label}>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>{group.label}</SelectLabel>
+                {group.options.map((option) => (
+                  <FontItem key={option.value} option={option} />
+                ))}
+              </SelectGroup>
+            </Fragment>
+          ))}
         </SelectContent>
       </Select>
     </>

@@ -1,16 +1,17 @@
 import * as React from 'react'
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { IconTrendingUp } from '@tabler/icons-react'
+import { IconTrendingDown } from '@tabler/icons-react'
 import { cn } from 'cn'
 
+import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { defineMessages, getLocale, LOCALE_TAGS, useLocale, useMessages } from '@/lib/i18n'
 import { formatTokens } from '@/lib/model-catalog'
 import { USAGE_PERIODS } from '@/lib/usage'
-import type { UsageKind, UsagePeriod, UsageSummary } from '@/lib/usage'
+import type { UpcomingPrice, UsageKind, UsagePeriod, UsageSummary } from '@/lib/usage'
 import { errorMessage } from '@/lib/utils'
 import { getUsageSummary } from '@/server/usage.functions'
 
@@ -34,11 +35,17 @@ const messages = defineMessages({
     input: 'Input',
     output: 'Output',
     cache: 'Cache đọc / ghi',
+    uncached: 'Input mới',
+    cacheRead: 'Cache đọc',
+    cacheWrite: 'Cache ghi',
+    cacheSplit: (read: string, write: string) => `cache đọc ${read} · ghi ${write}`,
     cost: 'Chi phí',
     callsHeader: 'Lần gọi',
     free: 'Miễn phí',
     empty: 'Chưa có lần gọi nào trong khoảng này.',
     priceChange: (name: string, date: string) => `${name} đổi giá từ ${date}.`,
+    discount: (percent: number) => `Giảm ${percent}%`,
+    discountUntil: (date: string) => `Giá ưu đãi đến ${date}.`,
     priceProjection: (now: string, next: string) =>
       `Nếu dùng như 30 ngày qua: khoảng ${next}/tháng (hiện ${now}/tháng).`,
     note: 'Chi phí là ước tính. Lần gọi chưa có giá trong danh mục không được tính vào tổng; admin có thể thêm giá trong Quản trị → Model.',
@@ -62,11 +69,17 @@ const messages = defineMessages({
     input: 'Input',
     output: 'Output',
     cache: 'Cache read / write',
+    uncached: 'New input',
+    cacheRead: 'Cache read',
+    cacheWrite: 'Cache write',
+    cacheSplit: (read: string, write: string) => `cache read ${read} · write ${write}`,
     cost: 'Cost',
     callsHeader: 'Calls',
     free: 'Free',
     empty: 'No calls in this period yet.',
     priceChange: (name: string, date: string) => `${name} changes price on ${date}.`,
+    discount: (percent: number) => `${percent}% off`,
+    discountUntil: (date: string) => `Discounted until ${date}.`,
     priceProjection: (now: string, next: string) =>
       `At your last 30 days of use: about ${next}/month (now ${now}/month).`,
     note: 'Costs are estimates. Calls without a catalog price are left out of the totals; an admin can add prices in Administration → Models.',
@@ -104,6 +117,10 @@ function UsagePage() {
     for (const row of data?.models ?? []) {
       const total = byKind[row.kind]
       total.tokens += row.inputTokens + row.outputTokens
+      total.input += row.inputTokens
+      total.output += row.outputTokens
+      total.cacheRead += row.cacheReadTokens
+      total.cacheWrite += row.cacheWriteTokens
       total.cost += row.cost ?? 0
       total.calls += row.calls
       total.unpriced += row.unpriced
@@ -111,8 +128,21 @@ function UsagePage() {
     }
     return byKind
   }, [data])
+  // A scheduled rise means today's price is a discount: shown on its model row, while price drops get a banner.
+  const discounts = new Map<string, UpcomingPrice>()
+  const drops: Array<UpcomingPrice> = []
+  for (const change of data?.upcoming ?? []) {
+    if (change.nextMonthly > change.currentMonthly) discounts.set(`${change.kind}:${change.provider}:${change.model}`, change)
+    else drops.push(change)
+  }
+  const formatDate = (time: number) => new Date(time).toLocaleDateString(LOCALE_TAGS[locale], { timeZone: 'UTC' })
+
   const all = {
     tokens: totals.chat.tokens + totals.tts.tokens,
+    input: totals.chat.input + totals.tts.input,
+    output: totals.chat.output + totals.tts.output,
+    cacheRead: totals.chat.cacheRead + totals.tts.cacheRead,
+    cacheWrite: totals.chat.cacheWrite + totals.tts.cacheWrite,
     cost: totals.chat.cost + totals.tts.cost,
     unpriced: totals.chat.unpriced + totals.tts.unpriced,
   }
@@ -146,7 +176,12 @@ function UsagePage() {
       )}
 
       <div className={cn('grid grid-cols-2 gap-3 transition-opacity md:grid-cols-4', isPending && 'opacity-50')}>
-        <Stat label={t.totalTokens} value={formatTokens(all.tokens)} hint={num(all.tokens)} />
+        <Stat
+          label={t.totalTokens}
+          value={formatTokens(all.tokens)}
+          title={num(all.tokens)}
+          hint={all.tokens > 0 ? <TokenBreakdown {...all} /> : undefined}
+        />
         <Stat label={t.totalCost} value={usd(all.cost)} hint={all.unpriced ? t.unpriced(num(all.unpriced)) : undefined} />
         <Stat
           label={t.chat}
@@ -162,15 +197,12 @@ function UsagePage() {
         />
       </div>
 
-      {data?.upcoming.map((change) => (
+      {drops.map((change) => (
         <div key={`${change.kind}:${change.model}`} role="status" className="flex gap-3 rounded-xl border bg-card p-4 text-sm">
-          <IconTrendingUp className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <IconTrendingDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div>
             <div className="font-medium">
-              {t.priceChange(
-                change.name,
-                new Date(change.effectiveFrom).toLocaleDateString(LOCALE_TAGS[locale], { timeZone: 'UTC' }),
-              )}
+              {t.priceChange(change.name, formatDate(change.effectiveFrom))}
             </div>
             <div className="mt-0.5 text-muted-foreground">
               {t.priceProjection(usd(change.currentMonthly), usd(change.nextMonthly))}
@@ -215,36 +247,69 @@ function UsagePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.models.map((row) => (
-                      <TableRow key={`${row.kind}:${row.provider}:${row.model}`}>
-                        <TableCell>
-                          <div className="font-mono text-xs">{row.model}</div>
-                          <div className="text-xs text-muted-foreground">{row.provider}</div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="flex items-center gap-1.5 text-xs">
-                            <span className={cn('size-2 rounded-sm', KIND_COLOR[row.kind])} />
-                            {t[row.kind]}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{num(row.calls)}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {row.inputTokens === 0 && row.chars > 0 ? t.chars(num(row.chars)) : num(row.inputTokens)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{num(row.outputTokens)}</TableCell>
-                        <TableCell className="text-right text-muted-foreground tabular-nums">
-                          {row.cacheReadTokens || row.cacheWriteTokens
-                            ? `${formatTokens(row.cacheReadTokens)} / ${formatTokens(row.cacheWriteTokens)}`
-                            : '—'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {row.kind === 'tts' && row.cost === 0 ? t.free : usd(row.cost)}
-                          {row.unpriced > 0 && (
-                            <div className="text-xs text-muted-foreground">{t.unpriced(num(row.unpriced))}</div>
+                    {data.models.map((row) => {
+                      const discount = discounts.get(`${row.kind}:${row.provider}:${row.model}`)
+                      return (
+                        <TableRow key={`${row.kind}:${row.provider}:${row.model}`}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs">{row.model}</span>
+                              {discount && (
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <Badge
+                                        tabIndex={0}
+                                        className="h-[18px] border-emerald-600/25 bg-emerald-600/10 px-1.5 text-[11px] text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-400"
+                                      />
+                                    }
+                                  >
+                                    {t.discount(Math.round((1 - discount.currentMonthly / discount.nextMonthly) * 100))}
+                                  </TooltipTrigger>
+                                  <TooltipContent className="flex-col items-start gap-0.5 py-2">
+                                    <div className="font-medium">{t.discountUntil(formatDate(discount.effectiveFrom))}</div>
+                                    <div className="opacity-70">
+                                      {t.priceProjection(usd(discount.currentMonthly), usd(discount.nextMonthly))}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{row.provider}</div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-1.5 text-xs">
+                              <span className={cn('size-2 rounded-sm', KIND_COLOR[row.kind])} />
+                              {t[row.kind]}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{num(row.calls)}</TableCell>
+                          {row.inputTokens === 0 && row.chars > 0 ? (
+                            <TableCell className="text-right tabular-nums" title={t.chars(num(row.chars))}>
+                              {t.chars(formatTokens(row.chars))}
+                            </TableCell>
+                          ) : (
+                            <TableCell className="text-right tabular-nums" title={num(row.inputTokens)}>
+                              {formatTokens(row.inputTokens)}
+                            </TableCell>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          <TableCell className="text-right tabular-nums" title={num(row.outputTokens)}>
+                            {formatTokens(row.outputTokens)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground tabular-nums">
+                            {row.cacheReadTokens || row.cacheWriteTokens
+                              ? `${formatTokens(row.cacheReadTokens)} / ${formatTokens(row.cacheWriteTokens)}`
+                              : '—'}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.kind === 'tts' && row.cost === 0 ? t.free : usd(row.cost)}
+                            {row.unpriced > 0 && (
+                              <div className="text-xs text-muted-foreground">{t.unpriced(num(row.unpriced))}</div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -258,18 +323,94 @@ function UsagePage() {
 }
 
 function emptyTotal() {
-  return { tokens: 0, cost: 0, calls: 0, unpriced: 0, chars: 0 }
+  return { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, calls: 0, unpriced: 0, chars: 0 }
 }
 
-function Stat({ label, value, hint, kind }: { label: string; value: React.ReactNode; hint?: string; kind?: UsageKind }) {
+function Stat({
+  label,
+  value,
+  title,
+  hint,
+  kind,
+}: {
+  label: string
+  value: React.ReactNode
+  title?: string
+  hint?: React.ReactNode
+  kind?: UsageKind
+}) {
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         {kind && <span className={cn('size-2 rounded-sm', KIND_COLOR[kind])} />}
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums" title={title}>
+        {value}
+      </div>
       {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
+    </div>
+  )
+}
+
+// Shades of one ink: input and its cache parts read as a family, output as the strongest mark.
+const TOKEN_PARTS = [
+  { key: 'uncached', color: 'bg-foreground/45' },
+  { key: 'cacheRead', color: 'bg-foreground/25' },
+  { key: 'cacheWrite', color: 'bg-foreground/12' },
+  { key: 'output', color: 'bg-foreground/85' },
+] as const
+
+/** Input (with the cache share inside it) against output, as one bar and two figures. */
+function TokenBreakdown({
+  input,
+  output,
+  cacheRead,
+  cacheWrite,
+}: {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}) {
+  const t = useMessages(messages)
+  const locale = useLocale()
+  const num = (n: number) => n.toLocaleString(LOCALE_TAGS[locale])
+  const parts = { uncached: Math.max(0, input - cacheRead - cacheWrite), cacheRead, cacheWrite, output }
+  const total = input + output
+  return (
+    <div className="mt-2 flex flex-col gap-2.5">
+      <div className="flex h-1.5 gap-px overflow-hidden rounded-full">
+        {TOKEN_PARTS.filter(({ key }) => parts[key] > 0).map(({ key, color }) => (
+          <div
+            key={key}
+            className={cn('min-w-0.5', color)}
+            style={{ width: `${(parts[key] / total) * 100}%` }}
+            title={`${key === 'output' ? t.output : t[key]} · ${num(parts[key])}`}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div title={num(input)}>
+          <div className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-foreground/45" />
+            {t.input}
+            <span className="ml-auto font-medium text-foreground tabular-nums">{formatTokens(input)}</span>
+          </div>
+          {(cacheRead > 0 || cacheWrite > 0) && (
+            <div className="mt-0.5 pl-3.5 text-[11px] tabular-nums">
+              {t.cacheSplit(formatTokens(cacheRead), formatTokens(cacheWrite))}
+            </div>
+          )}
+        </div>
+        <div title={num(output)}>
+          <div className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-foreground/85" />
+            {t.output}
+            <span className="ml-auto font-medium text-foreground tabular-nums">{formatTokens(output)}</span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

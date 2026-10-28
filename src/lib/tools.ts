@@ -163,12 +163,22 @@ export const learnWordDef = toolDefinition({
   outputSchema: z.object({ images: z.array(wordImageSchema) }),
 })
 
+/** Code a quiz question asks about, shown as a highlighted block under the question instead of inline. */
+const quizCodeSchema = z
+  .object({
+    language: z.string().meta({ description: 'Language for highlighting, e.g. js, ts, python, sql' }),
+    source: z.string().meta({ description: 'The code, with real line breaks and indentation, without Markdown fences' }),
+  })
+  .optional()
+  .meta({ description: 'Code the question is about (a snippet to trace, debug or predict the output of). Put it here, one statement per line, and keep it out of question, which then just asks about "this code".' })
+
 export const quizInputSchema = z.object({
   title: z.string().meta({ description: 'Instruction shown above every question, in the reply language, e.g. "Fill in the blank with the present perfect:"' }),
   questions: z
     .array(
       z.object({
         question: z.string().meta({ description: 'The question; use ___ for a blank.' }),
+        code: quizCodeSchema,
         options: z
           .array(
             z.object({
@@ -297,7 +307,7 @@ export const explainDeckInputSchema = z.object({
         content: z
           .string()
           .optional()
-          .meta({ description: 'For the content layout, what the slide shows, as Markdown: a few bullets, one small fenced code block, a ```mermaid diagram that builds as it is narrated, a ```svg drawing whose <g data-say> groups draw in as the narration reaches them, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together. For the title layout, a one-line subtitle.' }),
+          .meta({ description: 'For the content layout, what the slide shows, as Markdown: a few short bullets (at most about 12 words each), one small fenced code block, a ```mermaid diagram that builds as it is narrated, a ```svg drawing whose <g data-say> groups draw in as the narration reaches them, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together. For the title layout, a one-line subtitle.' }),
         cards: z
           .array(
             z.object({
@@ -313,6 +323,7 @@ export const explainDeckInputSchema = z.object({
         quiz: z
           .object({
             question: z.string(),
+            code: quizCodeSchema,
             options: z.array(z.string()).min(2).max(4),
             answer: z.number().int().meta({ description: 'Index of the correct option, from 0' }),
             explanation: z
@@ -352,4 +363,27 @@ export const explainDeckDef = toolDefinition({
     'Display a narrated slide lesson: slides appear as they stream in, and a player reads each slide\'s narration aloud and moves to the next slide on its own (play/pause, prev/next). Use it to explain a concept, a piece of code, a file or a link step by step. The lesson is the reply, so do not write any text next to it. If it returns issues, call it again with the whole deck fixed.',
   inputSchema: explainDeckInputSchema,
   outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()), style: z.string().optional() }),
+})
+
+/** Names the code of show_3d_scene is called with, matching what src/lib/scene-runtime.ts passes in. */
+export const SCENE_PARAMS = ['THREE', 'scene', 'camera', 'renderer', 'controls', 'onFrame', 'label', 'gui', 'addons'] as const
+
+export const sceneInputSchema = z.object({
+  title: z.string().meta({ description: 'Short name of what the scene shows, in the reply language, e.g. "Hệ Mặt Trời"' }),
+  code: z
+    .string()
+    .meta({ description: 'The body of an async function that builds the scene with the parameters described in the tool description. Plain JavaScript, no imports.' }),
+})
+export type SceneInput = z.infer<typeof sceneInputSchema>
+
+export const show3dSceneDef = toolDefinition({
+  name: 'show_3d_scene',
+  description: [
+    'Display an interactive 3D scene built with three.js (r186) in a card the user can orbit, zoom and pan, view full screen, and download as .glb, .png or a standalone .html. Use it whenever the user wants to see, build or explore something in 3D: an object, a model, a molecule, a mechanism, a math surface, a simulation.',
+    'code is the body of an async function run in a sandboxed page without network access, called with: THREE (the whole three.js namespace); scene (lit by a soft studio environment map, with a transparent background over a backdrop that follows the app theme, light or dark); camera (PerspectiveCamera); renderer (WebGLRenderer, shadows enabled); controls (OrbitControls with damping); onFrame(callback) to animate, called every frame with (delta, elapsed) in seconds; label(text), which returns a CSS2DObject text tag to add to any object; gui(), which returns a lil-gui panel for sliders, toggles and color pickers; addons ({ RoundedBoxGeometry, ConvexGeometry, ParametricGeometry, BufferGeometryUtils, SimplexNoise }).',
+    'Do not import anything, redeclare those names, create a renderer or scene, start an animation loop, use THREE.Clock or load files or URLs: build geometry, colors and textures (CanvasTexture, DataTexture) in code. Leave scene.background unset so the backdrop matches the theme; for a floor, use a plane with THREE.ShadowMaterial (opacity about 0.25), which only shows shadows and suits either theme. Unless the code moves the camera, the view frames everything in the scene; set userData.fit = false on large backdrops (ground, sky, star fields) to leave them out of the framing. The viewer has its own toggles for a floor grid, the labels and pausing onFrame motion, so add no GridHelper unless a grid is part of the subject.',
+    'The card is the reply, so do not write any text next to it. If it returns issues, call it again with the fixed code.',
+  ].join(' '),
+  inputSchema: sceneInputSchema,
+  outputSchema: z.object({ shown: z.boolean(), issues: z.array(z.string()) }),
 })

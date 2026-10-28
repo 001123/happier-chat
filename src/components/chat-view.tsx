@@ -49,6 +49,7 @@ import { WordCard, parseWordImages } from '@/components/word-card'
 import { GenerativeUI } from '@/components/generative-ui'
 import { ConversationMinimap } from '@/components/conversation-minimap'
 import { ComposerTools } from '@/components/composer-tools'
+import { AttachButton, AttachmentTray, MessageAttachments, attachmentParts, messageFiles, useComposerAttachments } from '@/components/composer-attachments'
 import { ChatViewSkeleton, greeting, shellCopy, takeFallbackInput } from '@/components/chat-view-skeleton'
 import {
   InputGroup,
@@ -93,6 +94,8 @@ import { ModeStarter, useChatMode, useExplainStyle } from '@/components/chat-mod
 import { readDisplaySettings } from '@/lib/display-settings'
 import { isExplainStyleId } from '@/lib/modes'
 import { useActiveModel } from '@/lib/provider-store'
+import { attachmentSupport } from '@/lib/attachments'
+import type { UploadedAttachment } from '@/lib/attachments'
 import { useSpeechSettings } from '@/lib/speech-settings'
 import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
 import type { SpeakerStatus } from '@/lib/use-speaker'
@@ -114,11 +117,13 @@ import {
   showDrawingBoardDef,
   showMapDef,
   showQuizDef,
+  show3dSceneDef,
   webSearchDef,
 } from '@/lib/tools'
-import type { DrawingBoardInput, ExplainDeckInput, QuizInput, RoleplayInput } from '@/lib/tools'
+import type { DrawingBoardInput, ExplainDeckInput, QuizInput, RoleplayInput, SceneInput } from '@/lib/tools'
 import { DrawingBoard, DrawingBoardSkeleton } from '@/components/drawing-board'
 import { ExplainCard } from '@/components/explain-card'
+import { SceneCard } from '@/components/scene-card'
 import { QuizCard, QuizCardSkeleton } from '@/components/quiz-card'
 import { ROLEPLAY_VOICES, RoleplayCard, RoleplayCardSkeleton } from '@/components/roleplay-card'
 import { renderUiDef, splitInlinePatches } from '@/lib/generative-ui'
@@ -139,6 +144,7 @@ const tools = clientTools(
   roleplayTurnDef,
   showDrawingBoardDef,
   explainDeckDef,
+  show3dSceneDef,
   renderUiDef,
 )
 
@@ -183,18 +189,6 @@ const copy = defineMessages({
     forbidden: 'Máy chủ từ chối yêu cầu (API key/quyền truy cập).',
     unreachable: 'Không kết nối được tới máy chủ.',
     genericError: 'Có lỗi khi tạo câu trả lời.',
-    quotes: [
-      { text: 'Có công mài sắt, có ngày nên kim.' },
-      { text: 'Nước chảy đá mòn.' },
-      { text: 'Kiến tha lâu cũng đầy tổ.' },
-      { text: 'Đi một ngày đàng, học một sàng khôn.' },
-      { text: 'Muốn biết phải hỏi, muốn giỏi phải học.' },
-      { text: 'Học thầy không tày học bạn.' },
-      { text: 'Thua keo này, bày keo khác.' },
-      { text: 'Một cây làm chẳng nên non, ba cây chụm lại nên hòn núi cao.' },
-      { text: 'Ăn quả nhớ kẻ trồng cây.' },
-      { text: 'Chậm mà chắc.' },
-    ] as ReadonlyArray<{ text: string; author?: string }>,
     rejectedSpec: 'spec lỗi',
     tools: {
       get_weather: 'Tra thời tiết',
@@ -208,6 +202,7 @@ const copy = defineMessages({
       roleplay_turn: 'Nhập vai',
       show_drawing_board: 'Mở bảng vẽ',
       explain_deck: 'Soạn bài giảng',
+      show_3d_scene: 'Dựng mô hình 3D',
       render_ui: 'Dựng giao diện',
       execute_typescript: 'Chạy code',
     } as Record<string, string>,
@@ -249,16 +244,6 @@ const copy = defineMessages({
     forbidden: 'The server rejected the request (API key/permissions).',
     unreachable: 'Could not connect to the server.',
     genericError: 'Something went wrong while generating the reply.',
-    quotes: [
-      { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds' },
-      { text: 'Premature optimization is the root of all evil.', author: 'Donald Knuth' },
-      { text: 'Make it work, make it right, make it fast.', author: 'Kent Beck' },
-      { text: 'The best way to predict the future is to invent it.', author: 'Alan Kay' },
-      { text: 'Any sufficiently advanced technology is indistinguishable from magic.', author: 'Arthur C. Clarke' },
-      { text: 'The only way to do great work is to love what you do.', author: 'Steve Jobs' },
-      { text: 'Well begun is half done.' },
-      { text: 'Slow and steady wins the race.' },
-    ] as ReadonlyArray<{ text: string; author?: string }>,
     rejectedSpec: 'invalid spec',
     tools: {
       get_weather: 'Check weather',
@@ -272,6 +257,7 @@ const copy = defineMessages({
       roleplay_turn: 'Role-play',
       show_drawing_board: 'Open drawing board',
       explain_deck: 'Build lesson',
+      show_3d_scene: 'Build 3D model',
       render_ui: 'Build interface',
       execute_typescript: 'Run code',
     } as Record<string, string>,
@@ -366,21 +352,11 @@ function getText(message: UIMessage) {
     .join('')
 }
 
-function imageSources(message: UIMessage) {
-  return message.parts.flatMap((part) => {
-    if (part.type !== 'image') return []
-    // A provider file handle is an opaque id the browser cannot load.
-    if (part.source.type === 'url') return [part.source.value]
-    if (part.source.type === 'data') return [`data:${part.source.mimeType};base64,${part.source.value}`]
-    return []
-  })
-}
-
 /** The user's latest image in the thread, so a new drawing board can build on it. */
 function lastUserImage(messages: ReadonlyArray<UIMessage>) {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i]!.role !== 'user') continue
-    const image = imageSources(messages[i]!).at(-1)
+    const image = messageFiles(messages[i]!).filter((file) => file.kind === 'image').at(-1)?.src
     if (image) return image
   }
   return undefined
@@ -441,6 +417,8 @@ export function ChatView({ threadId }: { threadId: string }) {
   )
 
   const runIdRef = React.useRef<string | null>(null)
+  const [loadingSince, setLoadingSince] = React.useState<number | null>(null)
+  const runStartedRef = React.useRef<number | null>(null)
   const { messages, sendMessage, setMessages, reload, isLoading, stop, error, interrupts } = useChat<typeof tools>({
     threadId,
     forwardedProps,
@@ -449,7 +427,16 @@ export function ChatView({ threadId }: { threadId: string }) {
     connection: fetchServerSentEvents('/api/chat'),
     tools,
     onChunk: (chunk) => {
-      if (chunk.type === 'RUN_STARTED') runIdRef.current = chunk.runId
+      if (chunk.type === 'RUN_STARTED') {
+        runIdRef.current = chunk.runId
+        // Rejoining a run after a reload replays its RUN_STARTED with the original timestamp, so the
+        // pending timer keeps counting from when the run began instead of from the reload.
+        const startedAt = chunk.timestamp
+        if (typeof startedAt === 'number') {
+          runStartedRef.current ??= startedAt
+          setLoadingSince((since) => (since !== null && startedAt < since - 2000 ? startedAt : since))
+        }
+      }
       if (chunk.type === 'RUN_FINISHED' || chunk.type === 'RUN_ERROR') runIdRef.current = null
       agui.push(chunk)
       stats.push(chunk)
@@ -519,8 +506,16 @@ export function ChatView({ threadId }: { threadId: string }) {
     return () => detachThreadView(threadId, loadingRef.current)
   }, [threadId])
 
-  const [loadingSince, setLoadingSince] = React.useState<number | null>(null)
-  React.useEffect(() => setLoadingSince(isLoading ? Date.now() : null), [isLoading])
+  React.useEffect(() => {
+    if (!isLoading) {
+      runStartedRef.current = null
+      setLoadingSince(null)
+      return
+    }
+    // A replayed RUN_STARTED can arrive before this effect runs.
+    const started = runStartedRef.current
+    setLoadingSince(started !== null && started < Date.now() - 2000 ? started : Date.now())
+  }, [isLoading])
 
   const title = thread?.title
   const reactions = useReactions(threadId)
@@ -609,7 +604,7 @@ export function ChatView({ threadId }: { threadId: string }) {
   const messageCount = messages.length
   React.useEffect(() => {
     if (!firstUserText) return
-    upsertThread(threadId, getText(firstUserText).slice(0, 60) || t.newChat)
+    upsertThread(threadId, getText(firstUserText).slice(0, 60) || messageFiles(firstUserText)[0]?.name || t.newChat)
   }, [threadId, firstUserText, messageCount])
 
   const composer = (
@@ -621,9 +616,13 @@ export function ChatView({ threadId }: { threadId: string }) {
       turns={messages.filter((m) => m.role === 'user').length}
       messageCount={messages.length}
       started={started}
-      onSend={(text) => {
+      onSend={(text, attachments) => {
         startTransition(() => setStarted(true))
-        void sendMessage(text)
+        void sendMessage(
+          attachments.length
+            ? { content: [...attachmentParts(attachments), ...(text ? [{ type: 'text' as const, content: text }] : [])] }
+            : text,
+        )
       }}
       onStop={stopRun}
     />
@@ -757,19 +756,12 @@ export function ChatView({ threadId }: { threadId: string }) {
                               ) : (
                               <div className="group/user flex w-full items-center justify-end gap-2">
                                 <div data-print-exclude className="flex shrink-0 items-center transition-opacity pointer-fine:opacity-0 group-hover/user:opacity-100 focus-within:opacity-100">
-                                  {/* Editing resends text only, so it would drop the images. */}
-                                  {imageSources(message).length === 0 && <EditButton onClick={() => setEditingId(message.id)} />}
+                                  {/* Editing resends text only, so it would drop the attachments. */}
+                                  {messageFiles(message).length === 0 && <EditButton onClick={() => setEditingId(message.id)} />}
                                   <CopyButton text={getText(message)} />
                                 </div>
                                 <div className="flex max-w-[85%] flex-col items-end gap-2">
-                                  {imageSources(message).map((src, i) => (
-                                    <img
-                                      key={i}
-                                      src={src}
-                                      alt={t.drawing}
-                                      className="w-56 rounded-2xl rounded-br-md border border-border shadow-xs"
-                                    />
-                                  ))}
+                                  <MessageAttachments files={messageFiles(message)} imageAlt={t.drawing} />
                                   {getText(message) && (
                                     <div className="whitespace-pre-wrap rounded-2xl rounded-br-md border border-border bg-user-bubble px-4 py-2.5 text-chat leading-relaxed shadow-xs">
                                       {getText(message)}
@@ -972,6 +964,23 @@ export function ChatView({ threadId }: { threadId: string }) {
                                   restyle={
                                     mode === 'explain' && !isLoading && message === messages.at(-1) ? explainStyle : undefined
                                   }
+                                  onAsk={(content) => void sendMessage(content)}
+                                />
+                              )
+                            })}
+                            {message.parts.map((part) => {
+                              if (part.type !== 'tool-call' || part.name !== 'show_3d_scene') return null
+                              const input = part.input ?? (part.arguments ? parsePartialJSON(part.arguments) : undefined)
+                              if (!input && part.state === 'error') return null
+                              // A scene the server rejected (code that does not parse) is replaced by the model's corrected call.
+                              const sceneResult = part.output ?? findResult(message, part.id)
+                              const sceneOutput = typeof sceneResult === 'string' ? safeJson(sceneResult) : sceneResult
+                              if (sceneOutput?.shown === false) return null
+                              return (
+                                <SceneCard
+                                  key={part.id}
+                                  input={(input ?? {}) as Partial<SceneInput>}
+                                  streaming={part.input === undefined && part.state !== 'error'}
                                   onAsk={(content) => void sendMessage(content)}
                                 />
                               )
@@ -1227,12 +1236,15 @@ function Composer({
   messageCount: number
   started: boolean
   offline: boolean
-  onSend: (text: string) => void
+  onSend: (text: string, attachments: Array<UploadedAttachment>) => void
   onStop: () => void
 }) {
   const t = useMessages(copy)
   const shellT = useMessages(shellCopy)
   const [input, setInput] = React.useState(takeFallbackInput)
+  const modelInfo = useActiveModel()?.info
+  const attachments = useComposerAttachments(threadId)
+  const [dragging, setDragging] = React.useState(false)
   const formRef = React.useRef<HTMLFormElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   React.useEffect(() => {
@@ -1242,18 +1254,52 @@ function Composer({
     el.focus()
     el.setSelectionRange(el.value.length, el.value.length)
   }, [])
-  const canSend = input.trim().length > 0 && !busy && !offline
+  const ready = attachments.items.flatMap((item) => (item.status === 'ready' && item.uploaded ? [item.uploaded] : []))
+  const uploading = attachments.items.some((item) => item.status === 'uploading')
+  const visionBlocked = !attachmentSupport(modelInfo).image && attachments.items.some((item) => item.kind === 'image')
+  const canSend = (input.trim().length > 0 || ready.length > 0) && !uploading && !visionBlocked && !busy && !offline
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canSend) return
-    onSend(input.trim())
+    onSend(input.trim(), ready)
     setInput('')
+    attachments.clear()
   }
 
+  const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes('Files')
+
   return (
-    <form ref={formRef} onSubmit={onSubmit} className="w-full">
-      <InputGroup className="h-auto rounded-2xl border-ring bg-card shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.04)] ring-3 ring-ring/50 dark:bg-card">
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      className="w-full"
+      onDragOver={(event) => {
+        if (!hasFiles(event)) return
+        event.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+      }}
+      onDrop={(event) => {
+        if (!hasFiles(event)) return
+        event.preventDefault()
+        setDragging(false)
+        attachments.add(event.dataTransfer.files)
+      }}
+    >
+      <InputGroup
+        className={cn(
+          'h-auto rounded-2xl border-ring bg-card shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.04)] ring-3 ring-ring/50 transition-colors dark:bg-card',
+          dragging && 'border-primary bg-primary/5 dark:bg-primary/10',
+        )}
+      >
+        {attachments.items.length > 0 && (
+          <InputGroupAddon align="block-start" className="px-3 pt-3">
+            <AttachmentTray items={attachments.items} info={modelInfo} onRemove={attachments.remove} />
+          </InputGroupAddon>
+        )}
         <InputGroupTextarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -1268,8 +1314,15 @@ function Composer({
               formRef.current?.requestSubmit()
             }
           }}
+          onPaste={(event) => {
+            // Pasted screenshots and copied files; plain text pastes as usual.
+            if (event.clipboardData.files.length === 0) return
+            event.preventDefault()
+            attachments.add(event.clipboardData.files)
+          }}
         />
         <InputGroupAddon align="block-end" className="px-3 pb-3">
+          <AttachButton info={modelInfo} disabled={offline} onFiles={attachments.add} />
           <ComposerTools threadId={threadId} offline={offline} runs={runs} turns={turns} messageCount={messageCount} started={started} />
           {busy ? (
             <InputGroupButton
@@ -1287,7 +1340,7 @@ function Composer({
               type="submit"
               variant="default"
               size="icon-sm"
-              disabled={offline}
+              disabled={offline || uploading || visionBlocked}
               className="rounded-lg"
             >
               <IconArrowUp />
@@ -1306,37 +1359,20 @@ function formatElapsed(ms: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
-const QUOTE_INTERVAL = 8000
-
 function PendingIndicator({ since }: { since: number | null }) {
   const t = useMessages(copy)
   const [now, setNow] = React.useState(() => Date.now())
-  const [start] = React.useState(() => Date.now())
-  const [seed] = React.useState(() => Math.floor(Math.random() * t.quotes.length))
   React.useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
-  const step = Math.floor((now - start) / QUOTE_INTERVAL)
-  const quote = t.quotes[(seed + step) % t.quotes.length]
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Logo className="size-6 shrink-0 animate-spin [animation-duration:3s] motion-reduce:animate-none" />
+      <Logo thinking className="size-6 shrink-0" />
       <span className="sr-only">{t.answering}</span>
       {since !== null && (
         <span aria-hidden className="shrink-0 tabular-nums">
           {formatElapsed(Math.max(0, now - since))}
-        </span>
-      )}
-      {quote && (
-        <span
-          key={step}
-          aria-hidden
-          className="min-w-0 truncate italic animate-in fade-in duration-200 motion-reduce:animate-none"
-        >
-          <span className="mr-1.5 not-italic opacity-50">·</span>
-          {quote.text}
-          {quote.author && <span className="not-italic opacity-70"> — {quote.author}</span>}
         </span>
       )}
     </div>
@@ -1755,7 +1791,15 @@ function ReasoningRow({ text, running }: { text: string; running: boolean }) {
         </TraceLine>
       </TraceCollapsibleTrigger>
       <TraceCollapsibleContent className="whitespace-pre-wrap">
-        {text}
+        {running ? (
+          // While streaming, a fixed-height window pinned to the latest lines: letting the panel grow with every
+          // token restarts its height transition and drags the autoscroll along, so the page shakes.
+          <div className="flex max-h-40 flex-col-reverse overflow-hidden mask-t-from-75%">
+            <div>{text}</div>
+          </div>
+        ) : (
+          text
+        )}
       </TraceCollapsibleContent>
     </TraceCollapsible>
   )

@@ -1,8 +1,20 @@
 import { useId } from 'react'
 import { cn } from '@/lib/utils'
 
-const PETALS = Array.from({ length: 12 }, (_, i) => (
-  <ellipse key={i} cx="12" cy="4.6" rx="1.9" ry="3.4" transform={`rotate(${i * 30} 12 12)`} />
+const PETAL_COUNT = 12
+
+const PETALS = Array.from({ length: PETAL_COUNT }, (_, i) => (
+  <ellipse
+    key={i}
+    cx="12"
+    cy="4.6"
+    rx="1.9"
+    ry="3.4"
+    transform={`rotate(${i * 30} 12 12)`}
+    className="logo-petal"
+    // Negative delays start the wave mid-cycle, so the ripple is visible on the first frame.
+    style={{ animationDelay: `${(i - PETAL_COUNT) * 0.1}s` }}
+  />
 ))
 
 const SEEDS = [
@@ -13,7 +25,8 @@ const SEEDS = [
   }),
 ]
 
-export function Logo({ className }: { className?: string }) {
+/** `thinking` turns the flower into a live indicator: a light wave runs round the petals while the core breathes. */
+export function Logo({ className, thinking = false }: { className?: string; thinking?: boolean }) {
   // The centre is cut out with a mask instead of painted with the page colour,
   // so the logo stays clean on any surface (sidebar, hover highlight, cards).
   const maskId = useId()
@@ -21,7 +34,7 @@ export function Logo({ className }: { className?: string }) {
     <svg
       viewBox="0 0 24 24"
       fill="currentColor"
-      className={cn('group/logo text-primary', className)}
+      className={cn('group/logo text-primary', thinking && 'logo-thinking', className)}
       aria-hidden
     >
       <mask id={maskId}>
@@ -33,10 +46,12 @@ export function Logo({ className }: { className?: string }) {
           {PETALS}
         </g>
       </g>
-      <circle cx="12" cy="12" r="4.4" fill="none" stroke="currentColor" strokeWidth={1.4} />
-      {SEEDS.map(([cx, cy], i) => (
-        <circle key={i} cx={cx} cy={cy} r="0.7" />
-      ))}
+      <g className="logo-core">
+        <circle cx="12" cy="12" r="4.4" fill="none" stroke="currentColor" strokeWidth={1.4} />
+        {SEEDS.map(([cx, cy], i) => (
+          <circle key={i} cx={cx} cy={cy} r="0.7" />
+        ))}
+      </g>
     </svg>
   )
 }

@@ -26,6 +26,8 @@ const MODE_TOPICS: Record<ModeId, string> = {
     'The user asks for a short narrated slide lesson explaining one concept, mostly programming, web, computer science or how a technology works.',
   quiz:
     'The user asks for a multiple-choice quiz to review one topic: programming, computer science, school subjects or general knowledge, sometimes with a difficulty or number of questions.',
+  '3d':
+    'The user asks for an interactive 3D scene: an everyday object or vehicle, a science model (solar system, molecule, cell), a mechanism, a math surface or a small physics simulation, sometimes with motion, labels or sliders.',
 }
 
 const StartersSchema = z.object({

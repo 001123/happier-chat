@@ -1,5 +1,6 @@
 import { ScriptOnce, useLoaderData, useRouteContext } from '@tanstack/react-router'
 
+import { AttachButton } from '@/components/composer-attachments'
 import { ComposerTools } from '@/components/composer-tools'
 import { Logo } from '@/components/logo'
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/components/ui/input-group'
@@ -124,6 +125,7 @@ export function ChatViewSkeleton({ threadId }: { threadId: string }) {
               autoFocus
             />
             <InputGroupAddon align="block-end" className="px-3 pb-3">
+              <AttachButton info={undefined} />
               <ComposerTools
                 threadId={threadId}
                 skeleton

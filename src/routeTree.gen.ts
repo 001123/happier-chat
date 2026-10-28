@@ -15,6 +15,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiFilesRouteImport } from './routes/api/files'
 import { Route as ApiStartersRouteImport } from './routes/api/starters'
 import { Route as ApiSuggestionsRouteImport } from './routes/api/suggestions'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
@@ -30,6 +31,7 @@ import { Route as AppSettingsProfileRouteImport } from './routes/_app.settings.p
 import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
 import { Route as AppSettingsUsageRouteImport } from './routes/_app.settings.usage'
 import { Route as AppSettingsVoiceRouteImport } from './routes/_app.settings.voice'
+import { Route as ApiFilesIdRouteImport } from './routes/api/files.$id'
 import { Route as AppSettingsAdminIndexRouteImport } from './routes/_app.settings.admin.index'
 import { Route as AppSettingsAdminModelsRouteImport } from './routes/_app.settings.admin.models'
 import { Route as AppSettingsAdminUsersRouteImport } from './routes/_app.settings.admin.users'
@@ -61,6 +63,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFilesRoute = ApiFilesRouteImport.update({
+  id: '/api/files',
+  path: '/api/files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiStartersRoute = ApiStartersRouteImport.update({
@@ -138,6 +145,11 @@ const AppSettingsVoiceRoute = AppSettingsVoiceRouteImport.update({
   path: '/voice',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const ApiFilesIdRoute = ApiFilesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiFilesRoute,
+} as any)
 const AppSettingsAdminIndexRoute = AppSettingsAdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -160,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/api/chat': typeof ApiChatRoute
+  '/api/files': typeof ApiFilesRouteWithChildren
   '/api/starters': typeof ApiStartersRoute
   '/api/suggestions': typeof ApiSuggestionsRoute
   '/api/tts': typeof ApiTtsRoute
@@ -174,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/settings/providers': typeof AppSettingsProvidersRoute
   '/settings/usage': typeof AppSettingsUsageRoute
   '/settings/voice': typeof AppSettingsVoiceRoute
+  '/api/files/$id': typeof ApiFilesIdRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/admin/models': typeof AppSettingsAdminModelsRoute
   '/settings/admin/users': typeof AppSettingsAdminUsersRoute
@@ -183,6 +197,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/files': typeof ApiFilesRouteWithChildren
   '/api/starters': typeof ApiStartersRoute
   '/api/suggestions': typeof ApiSuggestionsRoute
   '/api/tts': typeof ApiTtsRoute
@@ -197,6 +212,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof AppSettingsProvidersRoute
   '/settings/usage': typeof AppSettingsUsageRoute
   '/settings/voice': typeof AppSettingsVoiceRoute
+  '/api/files/$id': typeof ApiFilesIdRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/admin/models': typeof AppSettingsAdminModelsRoute
   '/settings/admin/users': typeof AppSettingsAdminUsersRoute
@@ -209,6 +225,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/api/chat': typeof ApiChatRoute
+  '/api/files': typeof ApiFilesRouteWithChildren
   '/api/starters': typeof ApiStartersRoute
   '/api/suggestions': typeof ApiSuggestionsRoute
   '/api/tts': typeof ApiTtsRoute
@@ -224,6 +241,7 @@ export interface FileRoutesById {
   '/_app/settings/providers': typeof AppSettingsProvidersRoute
   '/_app/settings/usage': typeof AppSettingsUsageRoute
   '/_app/settings/voice': typeof AppSettingsVoiceRoute
+  '/api/files/$id': typeof ApiFilesIdRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/admin/models': typeof AppSettingsAdminModelsRoute
   '/_app/settings/admin/users': typeof AppSettingsAdminUsersRoute
@@ -237,6 +255,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/settings'
     | '/api/chat'
+    | '/api/files'
     | '/api/starters'
     | '/api/suggestions'
     | '/api/tts'
@@ -251,6 +270,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/usage'
     | '/settings/voice'
+    | '/api/files/$id'
     | '/settings/'
     | '/settings/admin/models'
     | '/settings/admin/users'
@@ -260,6 +280,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/api/chat'
+    | '/api/files'
     | '/api/starters'
     | '/api/suggestions'
     | '/api/tts'
@@ -274,6 +295,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/usage'
     | '/settings/voice'
+    | '/api/files/$id'
     | '/settings'
     | '/settings/admin/models'
     | '/settings/admin/users'
@@ -285,6 +307,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_app/settings'
     | '/api/chat'
+    | '/api/files'
     | '/api/starters'
     | '/api/suggestions'
     | '/api/tts'
@@ -300,6 +323,7 @@ export interface FileRouteTypes {
     | '/_app/settings/providers'
     | '/_app/settings/usage'
     | '/_app/settings/voice'
+    | '/api/files/$id'
     | '/_app/settings/'
     | '/_app/settings/admin/models'
     | '/_app/settings/admin/users'
@@ -311,6 +335,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiFilesRoute: typeof ApiFilesRouteWithChildren
   ApiStartersRoute: typeof ApiStartersRoute
   ApiSuggestionsRoute: typeof ApiSuggestionsRoute
   ApiTtsRoute: typeof ApiTtsRoute
@@ -359,6 +384,13 @@ declare module '@tanstack/react-router' {
       path: '/api/chat'
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/files': {
+      id: '/api/files'
+      path: '/api/files'
+      fullPath: '/api/files'
+      preLoaderRoute: typeof ApiFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/starters': {
@@ -466,6 +498,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsVoiceRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/api/files/$id': {
+      id: '/api/files/$id'
+      path: '/$id'
+      fullPath: '/api/files/$id'
+      preLoaderRoute: typeof ApiFilesIdRouteImport
+      parentRoute: typeof ApiFilesRoute
+    }
     '/_app/settings/admin/': {
       id: '/_app/settings/admin/'
       path: '/'
@@ -549,11 +588,24 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface ApiFilesRouteChildren {
+  ApiFilesIdRoute: typeof ApiFilesIdRoute
+}
+
+const ApiFilesRouteChildren: ApiFilesRouteChildren = {
+  ApiFilesIdRoute: ApiFilesIdRoute,
+}
+
+const ApiFilesRouteWithChildren = ApiFilesRoute._addFileChildren(
+  ApiFilesRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiFilesRoute: ApiFilesRouteWithChildren,
   ApiStartersRoute: ApiStartersRoute,
   ApiSuggestionsRoute: ApiSuggestionsRoute,
   ApiTtsRoute: ApiTtsRoute,

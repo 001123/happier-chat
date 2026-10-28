@@ -324,37 +324,14 @@
 }
 
 /* A slide that is only a diagram or drawing fills the slide, so its shapes and words read large. */
-[data-figure] :is(.pele, .slide-svg svg) {
-  /* Streamdown sizes the diagram and its pan area inline, at the diagram's natural size. */
+[data-figure] :is(.slide-diagram, .slide-svg) svg {
   width: 100% !important;
   height: auto !important;
   max-height: 22rem;
 }
-/* An illustration has no code-block chrome: no language label, download or zoom buttons, frame or panning. */
-[data-figure] [data-streamdown='mermaid-block'] {
-  margin-block: 0.5rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-/* The diagram itself is the block's last child: hiding it before it renders would keep it from rendering at all. */
-[data-figure] [data-streamdown='mermaid-block'] > :not(:last-child),
-[data-figure] [data-streamdown='mermaid'] .relative > .absolute {
-  display: none;
-}
-[data-figure] [data-streamdown='mermaid-block'] > :last-child {
-  border: 0;
-  background: transparent;
-}
-/* The wrapper shrinks to the diagram, so it has to span the slide for the diagram to grow. */
-[data-figure] [data-streamdown='mermaid'] :has(> svg.pele) {
-  width: 100%;
-}
-[data-figure] [data-streamdown='mermaid'] .relative {
-  height: auto !important;
-  max-height: none;
-  overflow: visible;
-  cursor: auto !important;
+/* A diagram or drawing that had to keep the viewer waiting on a placeholder fades in, instead of popping. */
+[data-fade-in] {
+  animation: viz-fade 300ms ease-out both;
 }
 
 ::highlight(speaking-word) {
@@ -518,6 +495,49 @@
   to {
     opacity: 1;
     scale: 1;
+  }
+}
+
+/* Logo as a "replying" indicator: a light wave circles the petals, the core breathes, the flower turns slowly. */
+.logo-thinking {
+  animation: logo-turn 12s linear infinite;
+}
+.logo-thinking .logo-petal {
+  animation: logo-petal-wave 1.2s ease-in-out infinite;
+}
+.logo-thinking .logo-core {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: logo-core-breathe 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-thinking,
+  .logo-thinking .logo-petal,
+  .logo-thinking .logo-core {
+    animation: none;
+  }
+}
+@keyframes logo-turn {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes logo-petal-wave {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+@keyframes logo-core-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 0.86;
   }
 }
 

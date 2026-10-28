@@ -1,6 +1,7 @@
 import { convertMessagesToModelMessages } from '@tanstack/ai'
 import type { ModelMessage, UIMessage } from '@tanstack/ai'
 
+import { deleteThreadAttachments } from './attachments.server'
 import { getDb } from './db.server'
 import type { Thread } from '@/lib/threads'
 
@@ -100,9 +101,10 @@ const HISTORY_TABLES = [
   'delete from chat_interrupts where user_id = ? and thread_id = ?',
 ]
 
-/** Drops a thread with everything stored for it: transcript, runs and interrupts. */
+/** Drops a thread with everything stored for it: transcript, runs, interrupts and attachments. */
 export function deleteThreads(userId: string, ids: Array<string>) {
   clearHistory(userId, ids, true)
+  deleteThreadAttachments(userId, ids)
 }
 
 /**

@@ -105,6 +105,23 @@ const SCHEMA = `
   create index if not exists chat_interrupts_thread on chat_interrupts(user_id, thread_id, requested_at);
   create index if not exists chat_interrupts_run on chat_interrupts(user_id, run_id, requested_at);
 
+  -- Files attached to chat messages. The bytes live in the file store under storage_key (shared by uploads of
+  -- the same content); text holds what a PDF yields for models that cannot read PDFs themselves.
+  create table if not exists attachments (
+    id text primary key,
+    user_id text not null references users(id) on delete cascade,
+    thread_id text not null,
+    name text not null,
+    mime text not null,
+    size integer not null,
+    sha256 text not null,
+    storage_key text not null,
+    text text,
+    created_at integer not null
+  );
+  create index if not exists attachments_thread on attachments(user_id, thread_id);
+  create index if not exists attachments_storage_key on attachments(storage_key);
+
   -- A user's own Gemini API key for speech; without one the server's key is used.
   create table if not exists speech_keys (
     user_id text primary key references users(id) on delete cascade,

@@ -1135,7 +1135,7 @@ function ThreadIcon({ id }: { id: string }) {
   if (!busy) return <IconMessage />
   return (
     <>
-      <Logo className="animate-spin [animation-duration:3s] motion-reduce:animate-none" />
+      <Logo thinking />
       <span className="sr-only">{t.replying}</span>
     </>
   )

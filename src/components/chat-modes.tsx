@@ -6,6 +6,7 @@ import {
   IconChalkboard,
   IconCheck,
   IconChevronDown,
+  IconCube,
   IconDice5,
   IconLanguage,
   IconListCheck,
@@ -27,6 +28,7 @@ const MODE_ICONS: Record<ModeId, Icon> = {
   english: IconLanguage,
   explain: IconChalkboard,
   quiz: IconListCheck,
+  '3d': IconCube,
 }
 
 const messages = defineMessages({
@@ -90,6 +92,16 @@ const messages = defineMessages({
           'Ôn tập TypeScript generics, độ khó vừa',
         ],
       },
+      '3d': {
+        name: 'Dựng mô hình 3D',
+        description: 'Mô tả là có mô hình three.js để xoay, zoom và tải về',
+        starters: [
+          'Hệ Mặt Trời với các hành tinh quay quanh',
+          'Phân tử nước H₂O có nhãn từng nguyên tử',
+          'Một chiếc ô tô đồ chơi kiểu low-poly',
+          'Bề mặt z = sin(x)·cos(y) có thanh trượt tần số',
+        ],
+      },
     },
   },
   en: {
@@ -150,6 +162,16 @@ const messages = defineMessages({
           'Test my Big-O knowledge',
           'Quiz me on world capitals',
           'Review TypeScript generics, medium difficulty',
+        ],
+      },
+      '3d': {
+        name: '3D studio',
+        description: 'Describe it and get a three.js model to orbit, zoom and download',
+        starters: [
+          'The solar system with orbiting planets',
+          'A water molecule with each atom labelled',
+          'A low-poly toy car',
+          'The surface z = sin(x)·cos(y) with a frequency slider',
         ],
       },
     },

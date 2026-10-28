@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  ConsoleLogger,
   chat,
   chatParamsFromRequest,
   combineStrategies,
@@ -26,6 +27,8 @@ import {
   explainDeckDef,
   showDrawingBoardDef,
   showQuizDef,
+  show3dSceneDef,
+  SCENE_PARAMS,
   weatherConditions,
   webSearchDef,
 } from '@/lib/tools'
@@ -42,11 +45,34 @@ import type { ExplainStyleId } from '@/lib/modes'
 import { svgIssues } from '@/lib/svg-check'
 import type { Visual, Weather, WeatherCondition } from '@/lib/tools'
 import { parseModelKey } from '@/lib/providers'
+import { unsupportedAttachments, withAttachments } from '@/server/attachments.server'
+import { findCatalogModel } from '@/server/catalog.server'
 import { chatPersistenceFor } from '@/server/chat-persistence.server'
 import { createSandboxCodeMode } from '@/server/code-mode.server'
 import { createUserAdapter } from '@/server/providers.server'
 import { getSessionUser } from '@/server/session.server'
 import { chatUsageMiddleware } from '@/server/usage.server'
+
+// render_ui patches carry free-form JSON values, so its schema can never be strict and the
+// adapter warns about it on every request. Drop that one expected warning, keep the rest.
+// A partial debug config turns every unlisted category on, so list them all: errors only, like the default.
+const chatDebug = {
+  logger: new (class extends ConsoleLogger {
+    override warn(message: string, meta?: Record<string, unknown>) {
+      if (message.includes('tool "render_ui" sent with strict: false')) return
+      super.warn(message, meta)
+    }
+  })(),
+  errors: true,
+  provider: false,
+  output: false,
+  middleware: false,
+  tools: false,
+  agentLoop: false,
+  config: false,
+  request: false,
+  sandbox: false,
+}
 
 const copy = defineMessages({
   vi: {
@@ -54,6 +80,7 @@ const copy = defineMessages({
     wordProgress: 'Tìm ảnh minh hoạ',
     loginRequired: 'Bạn cần đăng nhập',
     noModel: 'Chưa chọn model. Hãy thêm provider trong Cài đặt → Provider.',
+    noVision: 'Model này không xem được ảnh. Hãy chọn model hỗ trợ ảnh hoặc bỏ ảnh đính kèm.',
     conditions: {
       sunny: 'Nắng',
       cloudy: 'Nhiều mây',
@@ -67,6 +94,7 @@ const copy = defineMessages({
     wordProgress: 'Finding illustrations',
     loginRequired: 'You need to sign in',
     noModel: 'No model selected. Add a provider in Settings → Provider.',
+    noVision: 'This model cannot see images. Pick a model that supports images or remove the attached image.',
     conditions: {
       sunny: 'Sunny',
       cloudy: 'Cloudy',
@@ -226,6 +254,32 @@ const explainDeckFor = (style: ExplainStyleId | undefined) => explainDeckDef.ser
   return { shown: issues.length === 0, issues, ...(style && { style }) }
 })
 
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (...args: Array<string>) => unknown
+const SCENE_CODE_PARAMS = `{ ${SCENE_PARAMS.join(', ')} }`
+
+/** What would break a 3D scene before it draws: code that does not parse, or that replaces what the card sets up. */
+function sceneIssues(code: string): Array<string> {
+  const issues: Array<string> = []
+  try {
+    // Compiled with the parameters the card passes, so redeclaring one is caught too. It is never called here.
+    new AsyncFunction(SCENE_CODE_PARAMS, code)
+  } catch (error) {
+    issues.push(`code does not parse: ${(error as Error).message}`)
+  }
+  if (/^\s*import\b|\bimport\s*\(/m.test(code)) issues.push('code must not import anything; three.js and the addons are passed in')
+  if (/new\s+THREE\.WebGLRenderer\b/.test(code)) issues.push('use the renderer that is passed in instead of creating one')
+  if (/\brequestAnimationFrame\s*\(|\.setAnimationLoop\s*\(/.test(code))
+    issues.push('animate with onFrame(callback) instead of requestAnimationFrame or setAnimationLoop')
+  if (/\bfetch\s*\(|\bXMLHttpRequest\b|\.load(?:Async)?\s*\(\s*['"`](?:https?:)?\/\//.test(code))
+    issues.push('the scene has no network access: build geometry and textures in code instead of loading them')
+  return issues
+}
+
+const showScene = show3dSceneDef.server(async ({ code }) => {
+  const issues = sceneIssues(code)
+  return { shown: issues.length === 0, issues }
+})
+
 const sendEmail = sendEmailDef.server(async () => {
   await sleep(300)
   return { sent: true, messageId: `msg_${Date.now().toString(36)}` }
@@ -284,7 +338,15 @@ const finalStep: ChatMiddleware = {
   },
 }
 
-const UI_ONLY_TOOLS = new Set(['render_ui', 'show_quiz', 'roleplay_turn', 'show_drawing_board', 'explain_deck', 'react_to_message'])
+const UI_ONLY_TOOLS = new Set([
+  'render_ui',
+  'show_quiz',
+  'roleplay_turn',
+  'show_drawing_board',
+  'explain_deck',
+  'show_3d_scene',
+  'react_to_message',
+])
 
 /**
  * A displayed UI or quiz is the reply. Without this, the model gets another turn after the card renders
@@ -365,12 +427,16 @@ export const Route = createFileRoute('/api/chat')({
         } catch (error) {
           return Response.json({ error: (error as Error).message }, { status: 400 })
         }
+        const target = { api: resolved.api, info: findCatalogModel(resolved.catalogProvider, selected.modelId) }
+        if (unsupportedAttachments(messages, target) === 'image') {
+          return Response.json({ error: copy[getLocale()].noVision }, { status: 400 })
+        }
         const durability = durabilityFor(request, user.id)
         const fresh = durability.resumeFrom() === null
         const abortController = fresh && runId ? trackRun(`${user.id}:${runId}`) : new AbortController()
 
         const stream = chat({
-          adapter: resolved.adapter,
+          adapter: withAttachments(resolved.adapter, user.id, target),
           systemPrompts: [
             `You are a friendly assistant. Keep replies concise. ${replyLanguageInstruction(replyLanguages)}`,
             'Use get_weather when asked about the weather, show_map when the user wants to see a map or location of a place (the map is already shown in the interface, so do not paste a link), set_theme when asked to switch the interface between light and dark, send_email when asked to send an email, and web_search when you need new information or are unsure. Then use fetch_page to read the 1-2 most relevant pages before answering. Cite your sources.',
@@ -396,7 +462,7 @@ export const Route = createFileRoute('/api/chat')({
           runId,
           parentRunId,
           resume,
-          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, showDrawingBoard, explainDeckFor(explainStyle), renderUi, ...codeMode.tools],
+          tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, showDrawingBoard, explainDeckFor(explainStyle), showScene, renderUi, ...codeMode.tools],
           // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
           modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
           reasoning: effort,
@@ -410,9 +476,16 @@ export const Route = createFileRoute('/api/chat')({
             chatUsageMiddleware(user.id, resolved.catalogProvider),
           ],
           abortController,
+          debug: chatDebug,
         })
 
-        return toServerSentEventsResponse(stream, { abortController, durability: { adapter: durability } })
+        // The dev proxy fails the next request on a connection reused after a streamed response with a bare 400
+        // (e.g. the follow-up suggestions fetched right after a reply), so close it once the stream ends.
+        return toServerSentEventsResponse(stream, {
+          abortController,
+          durability: { adapter: durability },
+          headers: { Connection: 'close' },
+        })
       },
     },
   },

@@ -13,6 +13,7 @@ import {
 } from '@tabler/icons-react'
 import { cn } from 'cn'
 
+import { QuizCode } from '@/components/quiz-code'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { setChatSetting, useChatSettings } from '@/lib/chat-settings'
@@ -179,7 +180,8 @@ export function QuizCard({
     read('answer')
   }
   const copyQuestion = async () => {
-    const text = [input.title, current.question, ...current.options.map((o, i) => `${LETTERS[i]}. ${o.text}`)].join('\n')
+    const snippet = current.code ? `\n${current.code.source}\n` : ''
+    const text = [input.title, current.question + snippet, ...current.options.map((o, i) => `${LETTERS[i]}. ${o.text}`)].join('\n')
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
@@ -260,6 +262,11 @@ export function QuizCard({
           <p ref={questionRef} className="mt-6 rounded-md text-lg font-semibold">
             {current.question}
           </p>
+          {current.code && (
+            <div className="mt-3">
+              <QuizCode code={current.code} />
+            </div>
+          )}
           <ol className="mt-4 flex flex-col gap-1">
             {current.options.map((option, i) => {
               const isAnswer = i === current.answer

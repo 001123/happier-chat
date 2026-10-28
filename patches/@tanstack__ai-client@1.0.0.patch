@@ -1,0 +1,12 @@
+diff --git a/dist/esm/chat-client.js b/dist/esm/chat-client.js
+index 1ce541592ab9b113a261d5e8f816b24136b5f519..13110d1e09d8fbff4a0933e2bc71a6c08215f29b 100644
+--- a/dist/esm/chat-client.js
++++ b/dist/esm/chat-client.js
+@@ -154,6 +154,7 @@ var REJOIN_REBUILD_TRIGGERS = /* @__PURE__ */ new Set([
+ 	"SUBAGENT_STARTED"
+ ]);
+ function rebuildsAssistantMessage(chunk) {
++	if (chunk.type === "REASONING_MESSAGE_START") return chunk.metadata != null;
+ 	if (chunk.type === "REASONING_ENCRYPTED_VALUE") return chunk.subtype === "message" && typeof chunk.encryptedValue === "string" && chunk.encryptedValue.length > 0;
+ 	return REJOIN_REBUILD_TRIGGERS.has(chunk.type);
+ }
