@@ -360,10 +360,10 @@ export function ExplainCard({
     for (const cue of cues) {
       const step = typeof cue.at === 'string' ? stepWith(items, cue.at) : -1
       if (step < 0) continue
-      const at = Math.max(0, cue.start - lead)
-      for (let i = 0; i <= step; i++) starts[i] = Math.min(starts[i]!, at)
+      for (let i = 0; i <= step; i++) starts[i] = Math.min(starts[i]!, cue.start)
     }
-    items.forEach((li, i) => li.setAttribute('data-reveal', starts[i]! <= spoken ? 'shown' : 'hidden'))
+    // A step appears as the cursor sets off for it, so it is there when the click lands.
+    items.forEach((li, i) => li.setAttribute('data-reveal', Math.max(0, starts[i]! - lead) <= spoken ? 'shown' : 'hidden'))
     // The cursor traces the whole step, a card's title and text or a bullet with its sub-bullets, so it is
     // pointed at as an element rather than looked up by its text, which could also be written elsewhere.
     const next = items.flatMap((el, index) => {
@@ -408,17 +408,27 @@ export function ExplainCard({
   // rows the narration names, so it keeps moving when the cues are missing or do not match the narration. A cue
   // said at the same moment is more precise, so the others give way to it.
   const saidWithCue = (at: number) => cues.some((cue) => cue.start - lead <= at && at < cue.start + cue.length)
-  const events: Array<{ from: number; start: number; length: number; at: PointerTarget; pace?: number }> = [
-    ...cues.map((cue) => ({ from: cue.start - lead, ...cue })),
+  // Cues and steps click when the cursor lands on them, like a presenter pointing or bringing in a bullet;
+  // walking a diagram only glides, so the clicks keep meaning "look here".
+  const events: Array<{ from: number; start: number; length: number; at: PointerTarget; pace?: number; click: boolean }> = [
+    ...cues.map((cue) => ({ from: cue.start - lead, ...cue, click: true })),
     // A step is traced at about reading pace, not stretched over all the narration until the next one, so the
-    // cursor underlines it while it appears and then rests at its end.
+    // cursor underlines it while it appears and then rests at its end. It sets off early too, so the click lands
+    // as the step appears.
     ...(building ? steps : [])
       .filter((step) => !saidWithCue(step.start))
-      .map((step) => ({ from: step.start, start: step.start, length: 0, at: step.target, pace: step.size * TRACE_PACE })),
+      .map((step) => ({
+        from: step.start - lead,
+        start: step.start,
+        length: 0,
+        at: step.target,
+        pace: step.size * TRACE_PACE,
+        click: true,
+      })),
     // Walking the diagram is only for when nothing else moves the cursor.
     ...(building ? marks : [])
       .filter((mark) => !saidWithCue(mark.start) && !(mark.walk && (cues.length > 0 || steps.length > 1)))
-      .map((mark) => ({ from: mark.start - lead, start: mark.start, length: 0, at: mark.target })),
+      .map((mark) => ({ from: mark.start - lead, start: mark.start, length: 0, at: mark.target, click: false })),
   ].sort((a, b) => a.from - b.from)
   // Steps and marks have no phrase of their own, so they are traced until the narration moves on: across a row
   // while it is talked about, down a column.
@@ -430,6 +440,7 @@ export function ExplainCard({
   const event = events.filter((event) => event.from <= spoken).at(-1)
   // Trace the heading until the narration reaches the first cue or step, or over all of it when there is none.
   const pointerTarget = event?.at ?? slide.title
+  const pointerClick = event?.click ?? false
   // How far the phrase has been read, so the cursor traces its text while it is said and rests at the end after.
   const pointerSweep = event
     ? Math.min(1, Math.max(0, (spoken - event.start) / Math.max(1, event.length)))
@@ -544,7 +555,7 @@ export function ExplainCard({
               )}
             </div>
           </div>
-          <SlidePointer target={pointerTarget} sweep={pointerSweep} visible={pointerVisible} />
+          <SlidePointer target={pointerTarget} sweep={pointerSweep} click={pointerClick} visible={pointerVisible} />
         </div>
         {!started && !playing && (
           <button
@@ -1417,7 +1428,7 @@ const SPRING = { stiffness: 110, damping: 20 }
 const ARC_BEND = 0.12
 const ARC_MAX_PX = 36
 const ARC_MIN_PX = 40
-// Within this many pixels of the cue the cursor counts as arrived and clicks.
+// Within this many pixels of the cue, or of the text it points at, the cursor counts as arrived and clicks.
 const POINTER_CLICK_PX = 4
 const PARTICLES = 8
 // The arrow tip sits at (2, 2) in the 24px cursor.
@@ -1459,19 +1470,54 @@ function startArc(motion: PointerMotion) {
   motion.arc = { nx, ny, bend: Math.min(total * ARC_BEND, ARC_MAX_PX), total, progress: 0 }
 }
 
+// Steps and diagram parts the build has not shown yet, as hidden in styles.css.
+const NOT_SHOWN =
+  "[data-reveal='hidden'], [data-building] li:not(li li):not([data-reveal]), [data-building] [data-build]:not([data-reveal])"
+
+/** Whether a point of the container lies in a step or diagram part that has not appeared yet. */
+function inHidden(container: HTMLElement, x: number, y: number) {
+  const box = container.getBoundingClientRect()
+  return Array.from(container.querySelectorAll(NOT_SHOWN)).some((el) => {
+    const rect = el.getBoundingClientRect()
+    return x >= rect.left - box.left && x <= rect.right - box.left && y >= rect.top - box.top && y <= rect.bottom - box.top
+  })
+}
+
+/** Whether a point lies on the target's text, give or take the click distance. */
+function onLines(lines: Array<DOMRect>, x: number, y: number) {
+  const pad = POINTER_CLICK_PX
+  return lines.some((line) => x >= line.left - pad && x <= line.right + pad && y >= line.top - pad && y <= line.bottom + pad)
+}
+
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /**
  * A presenter-style cursor that glides to the text being talked about and traces it while it is said; it
  * positions itself in its parent element. It moves on a spring, so a new goal mid-flight bends the path instead
- * of restarting it.
+ * of restarting it. It heads for the start of a new target first and clicks on landing, then traces from where the
+ * narration has got to: chasing a goal that already slides along the text, the spring would trail it and the
+ * click would land anywhere along the phrase.
  */
-function SlidePointer({ target, sweep, visible }: { target: PointerTarget; sweep: number; visible: boolean }) {
+function SlidePointer({
+  target,
+  sweep,
+  click: clicks,
+  visible,
+}: {
+  target: PointerTarget
+  sweep: number
+  click: boolean
+  visible: boolean
+}) {
   const ref = React.useRef<SVGSVGElement>(null)
   const lines = React.useRef<Array<DOMRect>>([])
   const motion = React.useRef<PointerMotion | null>(null)
+  // Set while the cursor heads for a new target, which holds the trace at its start until it lands.
+  const approaching = React.useRef(false)
   // Set when the cursor heads for a new cue, so it clicks once it has arrived.
   const clickPending = React.useRef(false)
+  const clicksRef = React.useRef(clicks)
+  clicksRef.current = clicks
   const [placed, setPlaced] = React.useState(false)
   // Each simulated click keys the press and the particle burst so their animations replay.
   const [click, setClick] = React.useState<{ id: number; x: number; y: number } | null>(null)
@@ -1485,7 +1531,7 @@ function SlidePointer({ target, sweep, visible }: { target: PointerTarget; sweep
 
   // Sets the goal from the current lines and sweep, and runs the spring until the cursor settles on it.
   const aim = React.useCallback(() => {
-    const goal = pointAlong(lines.current, sweepRef.current)
+    const goal = pointAlong(lines.current, approaching.current ? 0 : sweepRef.current)
     const el = ref.current
     if (!goal || !el) return
     const paint = (x: number, y: number) => (el.style.transform = `translate(${x}px, ${y}px)`)
@@ -1511,7 +1557,33 @@ function SlidePointer({ target, sweep, visible }: { target: PointerTarget; sweep
       current.vy += (SPRING.stiffness * dy - SPRING.damping * current.vy) * dt
       current.x += current.vx * dt
       current.y += current.vy * dt
-      const distance = Math.hypot(dx, dy)
+      let distance = Math.hypot(current.goal.x - current.x, current.goal.y - current.y)
+      // Landed once the drawn tip reaches the target's text, not only its first letter, so a fast approach clicks
+      // as it gets there instead of after the spring has crept the last pixels.
+      // A target still hidden by the build (a cue matched to no step) keeps the cursor waiting at its start, so
+      // it never clicks on empty space; the next narration word aims again and lands it once it shows.
+      const container = el.parentElement
+      if (
+        approaching.current &&
+        (distance < POINTER_CLICK_PX || onLines(lines.current, current.x + current.ox, current.y + current.oy)) &&
+        !(container && inHidden(container, current.goal.x, current.goal.y))
+      ) {
+        approaching.current = false
+        // Carry on from where the cursor is drawn, so dropping the bow does not jump.
+        current.x += current.ox
+        current.y += current.oy
+        current.ox = current.oy = 0
+        current.arc = null
+        if (clickPending.current) {
+          clickPending.current = false
+          const { x, y } = current
+          if (visibleRef.current) setClick((previous) => ({ id: (previous?.id ?? 0) + 1, x, y }))
+        }
+        // Trace from the share of the phrase already said.
+        const traced = pointAlong(lines.current, sweepRef.current)
+        if (traced) current.goal = traced
+        distance = Math.hypot(current.goal.x - current.x, current.goal.y - current.y)
+      }
       const settled = distance < 0.5 && Math.hypot(current.vx, current.vy) < 5
       if (settled) {
         current.x = current.goal.x
@@ -1530,11 +1602,6 @@ function SlidePointer({ target, sweep, visible }: { target: PointerTarget; sweep
         current.oy = arc.ny * lift
       }
       paint(current.x + current.ox, current.y + current.oy)
-      if (clickPending.current && distance < POINTER_CLICK_PX) {
-        clickPending.current = false
-        const { x, y } = current
-        if (visibleRef.current) setClick((previous) => ({ id: (previous?.id ?? 0) + 1, x, y }))
-      }
       current.frame = settled ? 0 : requestAnimationFrame(tick)
     }
     current.frame = requestAnimationFrame(tick)
@@ -1549,12 +1616,18 @@ function SlidePointer({ target, sweep, visible }: { target: PointerTarget; sweep
       aim()
     }
     const follow = () => measure(false)
-    // Click and bow when moving to a new cue, not when the cursor first appears on the slide.
-    const moving = motion.current !== null
+    // Land, bow and click when moving to a new target, not when the cursor first appears on the slide. A short
+    // hop along the same text only glides: clicking on every nearby word would be noise.
+    const moving = motion.current !== null && !reducedMotion()
+    approaching.current = moving
+    clickPending.current = false
     measure()
-    if (moving && motion.current && lines.current.length > 0 && !reducedMotion()) {
-      clickPending.current = true
+    if (moving && motion.current && lines.current.length > 0) {
       startArc(motion.current)
+      clickPending.current = clicksRef.current && motion.current.arc !== null
+    } else {
+      approaching.current = false
+      aim()
     }
     // Code highlighting and diagrams render after the text, which moves things around.
     const observer = new ResizeObserver(follow)

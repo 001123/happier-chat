@@ -97,7 +97,7 @@ import { useSpeechSettings } from '@/lib/speech-settings'
 import { segmentsFromElement, useSpeaker } from '@/lib/use-speaker'
 import type { SpeakerStatus } from '@/lib/use-speaker'
 import { toggleReaction, useReactions } from '@/lib/reactions'
-import { hasThread, setThreadBusy, upsertThread, usePendingProject, useThread, useThreadsSynced } from '@/lib/threads'
+import { attachThreadView, detachThreadView, hasThread, setThreadBusy, upsertThread, usePendingProject, useThread, useThreadsSynced } from '@/lib/threads'
 import { appHotkeys } from '@/lib/shortcuts'
 import { clearThread } from '@/server/threads.functions'
 import { useProjects } from '@/lib/projects'
@@ -510,10 +510,14 @@ export function ChatView({ threadId }: { threadId: string }) {
     if (reconnected && error && !isLoading && isNetworkError(error)) void reload()
   }, [online, error, isLoading, reload])
 
+  React.useEffect(() => setThreadBusy(threadId, isLoading), [threadId, isLoading])
+  // Leaving mid-reply does not stop the server run, so the sidebar keeps spinning until it finishes.
+  const loadingRef = React.useRef(isLoading)
+  loadingRef.current = isLoading
   React.useEffect(() => {
-    setThreadBusy(threadId, isLoading)
-    return () => setThreadBusy(threadId, false)
-  }, [threadId, isLoading])
+    attachThreadView(threadId)
+    return () => detachThreadView(threadId, loadingRef.current)
+  }, [threadId])
 
   const [loadingSince, setLoadingSince] = React.useState<number | null>(null)
   React.useEffect(() => setLoadingSince(isLoading ? Date.now() : null), [isLoading])
@@ -529,8 +533,8 @@ export function ChatView({ threadId }: { threadId: string }) {
     wasLoading.current = isLoading
     const last = messages.at(-1)
     if (!finished || !autoRead || error || last?.role !== 'assistant') return
-    // A lesson card narrates itself.
-    if (last.parts.some((p) => p.type === 'tool-call' && p.name === 'explain_deck')) return
+    // A lesson card narrates itself, and so does a quiz card.
+    if (last.parts.some((p) => p.type === 'tool-call' && (p.name === 'explain_deck' || p.name === 'show_quiz'))) return
     const turn = last.parts.find((p) => p.type === 'tool-call' && p.name === 'roleplay_turn')
     const roleplay = turn?.type === 'tool-call' ? (turn.input as RoleplayInput | undefined) : undefined
     if (roleplay?.line) {
@@ -906,6 +910,8 @@ export function ChatView({ threadId }: { threadId: string }) {
                                   id={part.id}
                                   input={part.input as QuizInput}
                                   onAsk={(content) => void sendMessage(content)}
+                                  speaker={speaker}
+                                  fresh={isLoading && index === messages.length - 1}
                                 />
                               )
                             })}

@@ -44,6 +44,8 @@ const SCHEMA = `
     data text not null,
     override text,
     updated_at integer not null,
+    -- Added by an admin for a model models.dev lacks; a sync never removes it.
+    manual integer not null default 0,
     primary key (provider_id, model_id)
   );
 
@@ -110,6 +112,34 @@ const SCHEMA = `
     updated_at integer not null
   );
 
+  -- One row per billed model call (a chat agent-loop step or a speech request), priced when it happened.
+  create table if not exists usage_events (
+    id integer primary key,
+    user_id text not null references users(id) on delete cascade,
+    kind text not null,
+    provider text not null,
+    model text not null,
+    thread_id text,
+    run_id text,
+    input_tokens integer not null default 0,
+    output_tokens integer not null default 0,
+    cache_read_tokens integer not null default 0,
+    cache_write_tokens integer not null default 0,
+    chars integer,
+    cost_usd real,
+    created_at integer not null
+  );
+  create index if not exists usage_events_user on usage_events(user_id, created_at);
+
+  -- Prices an admin schedules ahead (a provider's announced price change); the latest one in effect wins.
+  create table if not exists model_price_schedule (
+    provider_id text not null,
+    model_id text not null,
+    effective_from integer not null,
+    cost text not null,
+    primary key (provider_id, model_id, effective_from)
+  );
+
   create table if not exists catalog_meta (
     id integer primary key check (id = 1),
     providers text not null,
@@ -130,6 +160,10 @@ function migrate(db: DatabaseSync) {
   }
   if (!userColumns.some((column) => column.name === 'name')) {
     db.exec("alter table users add column name text not null default ''")
+  }
+  const catalogColumns = db.prepare('pragma table_info(model_catalog)').all() as Array<{ name: string }>
+  if (!catalogColumns.some((column) => column.name === 'manual')) {
+    db.exec('alter table model_catalog add column manual integer not null default 0')
   }
   const threadColumns = db.prepare('pragma table_info(chat_threads)').all() as Array<{ name: string }>
   if (!threadColumns.some((column) => column.name === 'explain_style')) {

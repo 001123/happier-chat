@@ -6,7 +6,7 @@ import { cn } from 'cn'
 import { InputGroupButton } from '@/components/ui/input-group'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { setChatSetting, useChatSettings, useChatToggles } from '@/lib/chat-settings'
-import { GEMINI_VOICES, setSpeechSettings, useSpeechSettings } from '@/lib/speech-settings'
+import { GEMINI_VOICES, OPENROUTER_TTS_MODELS, setSpeechSettings, useSpeechSettings } from '@/lib/speech-settings'
 import { languageName, localeOf, shortName, useLocales, useVoices, voiceLocale } from '@/lib/voices'
 
 const messages = defineMessages({
@@ -125,6 +125,17 @@ function AutoReadSubmenu() {
   const localeVoices = (voices ?? []).filter((v) => voiceLocale(v) === locale)
   const currentVoice = voices?.find((v) => v.voiceId === settings.voice)
   const gemini = settings.engine === 'gemini'
+  const openrouter = settings.engine === 'openrouter'
+  // Gemini and OpenRouter list fixed voices; Edge picks a language first.
+  const fixedVoices = gemini
+    ? { value: settings.geminiVoice, voices: GEMINI_VOICES, pick: (geminiVoice: string) => setSpeechSettings({ geminiVoice }) }
+    : openrouter
+      ? {
+          value: settings.openrouterVoice,
+          voices: (OPENROUTER_TTS_MODELS.find((m) => m.id === settings.openrouterModel) ?? OPENROUTER_TTS_MODELS[0]!).voices,
+          pick: (openrouterVoice: string) => setSpeechSettings({ openrouterVoice }),
+        }
+      : null
 
   return (
     <Menu.SubmenuRoot>
@@ -147,7 +158,7 @@ function AutoReadSubmenu() {
           format={(v) => `${v.toFixed(2)}×`}
           onChange={(speed) => setSpeechSettings({ speed })}
         />
-        {!gemini && (
+        {!fixedVoices && (
           <MenuSlider
             label={t.pitch}
             min={-30}
@@ -161,15 +172,12 @@ function AutoReadSubmenu() {
 
         <Menu.Separator className="-mx-1 my-1 h-px bg-border" />
 
-        {gemini ? (
+        {fixedVoices ? (
           <Menu.SubmenuRoot>
-            <SubmenuTrigger label={t.voice} value={settings.geminiVoice} />
+            <SubmenuTrigger label={t.voice} value={fixedVoices.value} />
             <SubmenuPopup className="max-h-80 overflow-y-auto">
-              <Menu.RadioGroup
-                value={settings.geminiVoice}
-                onValueChange={(geminiVoice: string) => setSpeechSettings({ geminiVoice })}
-              >
-                {GEMINI_VOICES.map((voice) => (
+              <Menu.RadioGroup value={fixedVoices.value} onValueChange={fixedVoices.pick}>
+                {fixedVoices.voices.map((voice) => (
                   <RadioItem key={voice} value={voice} label={voice} />
                 ))}
               </Menu.RadioGroup>

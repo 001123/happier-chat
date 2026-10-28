@@ -28,6 +28,7 @@ import { Route as AppSettingsDisplayRouteImport } from './routes/_app.settings.d
 import { Route as AppSettingsLanguageRouteImport } from './routes/_app.settings.language'
 import { Route as AppSettingsProfileRouteImport } from './routes/_app.settings.profile'
 import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
+import { Route as AppSettingsUsageRouteImport } from './routes/_app.settings.usage'
 import { Route as AppSettingsVoiceRouteImport } from './routes/_app.settings.voice'
 import { Route as AppSettingsAdminIndexRouteImport } from './routes/_app.settings.admin.index'
 import { Route as AppSettingsAdminModelsRouteImport } from './routes/_app.settings.admin.models'
@@ -127,6 +128,11 @@ const AppSettingsProvidersRoute = AppSettingsProvidersRouteImport.update({
   path: '/providers',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsUsageRoute = AppSettingsUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsVoiceRoute = AppSettingsVoiceRouteImport.update({
   id: '/voice',
   path: '/voice',
@@ -166,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/settings/language': typeof AppSettingsLanguageRoute
   '/settings/profile': typeof AppSettingsProfileRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
+  '/settings/usage': typeof AppSettingsUsageRoute
   '/settings/voice': typeof AppSettingsVoiceRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/admin/models': typeof AppSettingsAdminModelsRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/settings/language': typeof AppSettingsLanguageRoute
   '/settings/profile': typeof AppSettingsProfileRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
+  '/settings/usage': typeof AppSettingsUsageRoute
   '/settings/voice': typeof AppSettingsVoiceRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/admin/models': typeof AppSettingsAdminModelsRoute
@@ -214,6 +222,7 @@ export interface FileRoutesById {
   '/_app/settings/language': typeof AppSettingsLanguageRoute
   '/_app/settings/profile': typeof AppSettingsProfileRoute
   '/_app/settings/providers': typeof AppSettingsProvidersRoute
+  '/_app/settings/usage': typeof AppSettingsUsageRoute
   '/_app/settings/voice': typeof AppSettingsVoiceRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/admin/models': typeof AppSettingsAdminModelsRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/settings/language'
     | '/settings/profile'
     | '/settings/providers'
+    | '/settings/usage'
     | '/settings/voice'
     | '/settings/'
     | '/settings/admin/models'
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/settings/language'
     | '/settings/profile'
     | '/settings/providers'
+    | '/settings/usage'
     | '/settings/voice'
     | '/settings'
     | '/settings/admin/models'
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/_app/settings/language'
     | '/_app/settings/profile'
     | '/_app/settings/providers'
+    | '/_app/settings/usage'
     | '/_app/settings/voice'
     | '/_app/settings/'
     | '/_app/settings/admin/models'
@@ -440,6 +452,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsProvidersRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/usage': {
+      id: '/_app/settings/usage'
+      path: '/usage'
+      fullPath: '/settings/usage'
+      preLoaderRoute: typeof AppSettingsUsageRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/voice': {
       id: '/_app/settings/voice'
       path: '/voice'
@@ -494,6 +513,7 @@ interface AppSettingsRouteChildren {
   AppSettingsLanguageRoute: typeof AppSettingsLanguageRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
   AppSettingsProvidersRoute: typeof AppSettingsProvidersRoute
+  AppSettingsUsageRoute: typeof AppSettingsUsageRoute
   AppSettingsVoiceRoute: typeof AppSettingsVoiceRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
@@ -506,6 +526,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsLanguageRoute: AppSettingsLanguageRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
   AppSettingsProvidersRoute: AppSettingsProvidersRoute,
+  AppSettingsUsageRoute: AppSettingsUsageRoute,
   AppSettingsVoiceRoute: AppSettingsVoiceRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }

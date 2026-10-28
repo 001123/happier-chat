@@ -5,7 +5,7 @@ import { cn } from 'cn'
 
 import type { Effort } from '@/lib/effort'
 import { LOCALE_TAGS, defineMessages, getLocale, useMessages } from '@/lib/i18n'
-import { formatPrice, formatTokens } from '@/lib/model-catalog'
+import { formatPrice, formatTokens, usageCost } from '@/lib/model-catalog'
 import type { CatalogModel } from '@/lib/model-catalog'
 import { useActiveModel, useModelOptions } from '@/lib/provider-store'
 import { Button } from '@/components/ui/button'
@@ -165,23 +165,8 @@ function isUsage(u: unknown): u is TokenUsage {
   return typeof u === 'object' && u !== null && !Array.isArray(u) && 'promptTokens' in u
 }
 
-/**
- * USD cost of a run from catalog prices per 1M tokens. Prompt tokens include cached ones, so cache
- * reads and writes are priced separately and fall back to the input price when the catalog has none.
- */
 function runCost(usage: TokenUsage | undefined, info: CatalogModel | null | undefined) {
-  const cost = info?.cost
-  if (!usage || cost?.input == null || cost.output == null) return undefined
-  const cacheRead = usage.promptTokensDetails?.cachedTokens ?? 0
-  const cacheWrite = usage.promptTokensDetails?.cacheWriteTokens ?? 0
-  const uncached = Math.max(0, usage.promptTokens - cacheRead - cacheWrite)
-  return (
-    (uncached * cost.input +
-      cacheRead * (cost.cacheRead ?? cost.input) +
-      cacheWrite * (cost.cacheWrite ?? cost.input) +
-      usage.completionTokens * cost.output) /
-    1_000_000
-  )
+  return usage ? usageCost(usage, info?.cost) : undefined
 }
 
 function summarize(runs: Array<RunStat>, infoFor: (run: RunStat) => CatalogModel | null) {

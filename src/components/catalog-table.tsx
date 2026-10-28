@@ -27,14 +27,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { applyOverride, formatTokens } from '@/lib/model-catalog'
+import { applyOverride, applySchedule, formatPrice, formatTokens, nextPrice } from '@/lib/model-catalog'
 import type { AdminCatalogRow, CatalogModel } from '@/lib/model-catalog'
 import { cn } from '@/lib/utils'
-import { defineMessages, useMessages } from '@/lib/i18n'
+import { defineMessages, LOCALE_TAGS, useLocale, useMessages } from '@/lib/i18n'
 
 const messages = defineMessages({
   vi: {
     edited: 'Đã sửa',
+    manual: 'Thủ công',
+    priceChange: (date: string) => `Đổi giá ${date}`,
+    priceChangeTitle: (input: string, output: string) => `Giá mới ${input} / ${output} mỗi 1M token`,
     edit: 'Sửa',
     allProviders: 'Tất cả provider',
     searchPlaceholder: 'Tìm model…',
@@ -43,6 +46,9 @@ const messages = defineMessages({
   },
   en: {
     edited: 'Edited',
+    manual: 'Manual',
+    priceChange: (date: string) => `New price ${date}`,
+    priceChangeTitle: (input: string, output: string) => `New price ${input} / ${output} per 1M tokens`,
     edit: 'Edit',
     allProviders: 'All providers',
     searchPlaceholder: 'Search models…',
@@ -52,7 +58,7 @@ const messages = defineMessages({
 })
 
 /** Renders a plain-string message; lets module-scope column headers follow the locale. */
-function Msg({ k }: { k: 'edited' | 'edit' }) {
+function Msg({ k }: { k: 'edited' | 'edit' | 'manual' }) {
   return useMessages(messages)[k]
 }
 
@@ -101,6 +107,12 @@ const columns = helper.columns([
           <span className="truncate font-medium" title={row.original.name}>
             {row.original.name}
           </span>
+          {row.original.source.manual && (
+            <Badge variant="secondary" className="shrink-0 text-[10px]">
+              <Msg k="manual" />
+            </Badge>
+          )}
+          <PriceChangeBadge row={row.original.source} />
           {row.original.source.override && (
             <Badge variant="outline" className="shrink-0 text-[10px]">
               <Msg k="edited" />
@@ -188,8 +200,22 @@ function EditButton({ row }: { row: AdminCatalogRow }) {
   )
 }
 
+/** Flags a scheduled price change, so nobody is surprised when it takes effect. */
+function PriceChangeBadge({ row }: { row: AdminCatalogRow }) {
+  const t = useMessages(messages)
+  const locale = useLocale()
+  const next = nextPrice(row.schedule)
+  if (!next) return null
+  const date = new Date(next.effectiveFrom).toLocaleDateString(LOCALE_TAGS[locale], { timeZone: 'UTC' })
+  return (
+    <Badge variant="outline" className="shrink-0 text-[10px]" title={t.priceChangeTitle(formatPrice(next.cost.input), formatPrice(next.cost.output))}>
+      {t.priceChange(date)}
+    </Badge>
+  )
+}
+
 function toRow(source: AdminCatalogRow): Row {
-  const model = applyOverride(source.model, source.override)
+  const model = applySchedule(applyOverride(source.model, source.override), source.schedule)
   return {
     providerId: source.providerId,
     id: model.id,

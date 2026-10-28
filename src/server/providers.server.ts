@@ -3,7 +3,7 @@ import { createGeminiChat } from '@tanstack/ai-gemini'
 import { createOllamaChat } from '@tanstack/ai-ollama'
 import { openaiCompatibleText } from '@tanstack/ai-openai/compatible'
 
-import { getPreset } from '@/lib/providers'
+import { catalogProviderId, getPreset } from '@/lib/providers'
 import type { ModelApi, PresetId, ProviderModel, ProviderView } from '@/lib/providers'
 import { decrypt, encrypt } from './crypto.server'
 import { getDb } from './db.server'
@@ -268,11 +268,14 @@ export function createUserAdapter(userId: string, providerId: string, modelId: s
   if (!model) throw new Error(messages[getLocale()].modelNotEnabled(modelId, row.name))
   const apiKey = decryptKey(row.api_key_enc)
   const defaultHeaders = presetHeaders(row.preset, sessionId)
+  // Where the catalog files this provider's models, for pricing what a run used.
+  const catalogProvider = catalogProviderId(row.preset)
 
   if (model.api === 'anthropic') {
     if (!row.anthropic_url) throw new Error(messages[getLocale()].noAnthropicEndpoint(row.name))
     return {
       api: model.api,
+      catalogProvider,
       // Arbitrary model ids from the user's provider: the typed model list cannot know them.
       adapter: createAnthropicChat(modelId as 'claude-haiku-5-5', apiKey, { baseURL: trimSlash(row.anthropic_url), defaultHeaders }),
     }
@@ -281,6 +284,7 @@ export function createUserAdapter(userId: string, providerId: string, modelId: s
     if (!row.gemini_url) throw new Error(messages[getLocale()].noGeminiEndpoint(row.name))
     return {
       api: model.api,
+      catalogProvider,
       adapter: createGeminiChat(modelId as 'gemini-2.5-flash', apiKey, { baseURL: trimSlash(row.gemini_url), defaultHeaders }),
     }
   }
@@ -288,6 +292,7 @@ export function createUserAdapter(userId: string, providerId: string, modelId: s
     if (!row.ollama_url) throw new Error(messages[getLocale()].noOllamaEndpoint(row.name))
     return {
       api: model.api,
+      catalogProvider,
       adapter: createOllamaChat(modelId, {
         baseURL: trimSlash(row.ollama_url),
         defaultHeaders: { ...defaultHeaders, ...(apiKey && { authorization: `Bearer ${apiKey}` }) },
@@ -297,6 +302,7 @@ export function createUserAdapter(userId: string, providerId: string, modelId: s
   if (!row.openai_url) throw new Error(messages[getLocale()].noOpenaiEndpoint(row.name))
   return {
     api: model.api,
+    catalogProvider,
     adapter: openaiCompatibleText(modelId, {
       name: row.name,
       baseURL: trimSlash(row.openai_url),

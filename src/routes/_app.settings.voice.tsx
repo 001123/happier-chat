@@ -8,7 +8,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { DEFAULTS, GEMINI_TTS_MODELS, GEMINI_VOICES, setSpeechSettings, useSpeechSettings } from '@/lib/speech-settings'
+import {
+  DEFAULTS,
+  GEMINI_TTS_MODELS,
+  GEMINI_VOICES,
+  OPENROUTER_TTS_MODELS,
+  setSpeechSettings,
+  useSpeechSettings,
+} from '@/lib/speech-settings'
 import type { SpeechEngine } from '@/lib/speech-settings'
 import { defineMessages, getLocale, useMessages } from '@/lib/i18n'
 import { useSpeaker } from '@/lib/use-speaker'
@@ -19,13 +26,17 @@ const messages = defineMessages({
   vi: {
     title: 'Giọng nói · Cài đặt · Happier Chat',
     heading: 'Giọng nói',
-    intro: 'Đọc to câu trả lời và bài giảng bằng Gemini TTS hoặc Microsoft Edge TTS.',
+    intro: 'Đọc to câu trả lời và bài giảng bằng Gemini TTS, Microsoft Edge TTS hoặc một model giọng nói trên OpenRouter.',
     engine: 'Dịch vụ giọng đọc',
-    engineHelp: 'Gemini ổn định hơn và cần API key; Edge miễn phí nhưng đôi lúc chập chờn.',
+    engineHelp: 'Gemini ổn định hơn và cần API key; Edge miễn phí nhưng đôi lúc chập chờn; OpenRouter dùng key của server.',
     gemini: 'Gemini',
     geminiHelp: 'Cần API key Google AI Studio',
     edge: 'Microsoft Edge',
     edgeHelp: 'Miễn phí, không cần key',
+    openrouter: 'OpenRouter',
+    openrouterHelp: 'Dùng key của server, model free',
+    openrouterModelHelp: 'Bản free có hạn dùng do OpenRouter đặt; hết hạn thì chuyển dịch vụ khác.',
+    openrouterVoiceHelp: 'Giọng HeyGen. Bấm ▶ để nghe thử, nhất là với tiếng Việt.',
     model: 'Model',
     modelHelp: 'Flash Lite rẻ hơn, Flash cho giọng tự nhiên hơn.',
     apiKey: 'API key Gemini',
@@ -61,13 +72,17 @@ const messages = defineMessages({
   en: {
     title: 'Voice · Settings · Happier Chat',
     heading: 'Voice',
-    intro: 'Read answers and lessons aloud with Gemini TTS or Microsoft Edge TTS.',
+    intro: 'Read answers and lessons aloud with Gemini TTS, Microsoft Edge TTS, or a speech model on OpenRouter.',
     engine: 'Voice service',
-    engineHelp: 'Gemini is more reliable and needs an API key; Edge is free but sometimes flaky.',
+    engineHelp: "Gemini is more reliable and needs an API key; Edge is free but sometimes flaky; OpenRouter uses the server's key.",
     gemini: 'Gemini',
     geminiHelp: 'Needs a Google AI Studio API key',
     edge: 'Microsoft Edge',
     edgeHelp: 'Free, no key needed',
+    openrouter: 'OpenRouter',
+    openrouterHelp: "Uses the server's key, free model",
+    openrouterModelHelp: 'Free variants expire on a date OpenRouter sets; switch services when one does.',
+    openrouterVoiceHelp: 'HeyGen voices. Press ▶ to preview, especially for non-English text.',
     model: 'Model',
     modelHelp: 'Flash Lite costs less, Flash sounds more natural.',
     apiKey: 'Gemini API key',
@@ -122,14 +137,24 @@ function VoiceSettingsPage() {
     settings.engine !== DEFAULTS.engine ||
     settings.geminiModel !== DEFAULTS.geminiModel ||
     settings.geminiVoice !== DEFAULTS.geminiVoice ||
+    settings.openrouterModel !== DEFAULTS.openrouterModel ||
+    settings.openrouterVoice !== DEFAULTS.openrouterVoice ||
     settings.voice !== DEFAULTS.voice ||
     settings.speed !== DEFAULTS.speed ||
     settings.pitch !== DEFAULTS.pitch
 
   const gemini = settings.engine === 'gemini'
+  const openrouter = settings.engine === 'openrouter'
+  const edge = settings.engine === 'edge'
+  const openrouterModel =
+    OPENROUTER_TTS_MODELS.find((m) => m.id === settings.openrouterModel) ?? OPENROUTER_TTS_MODELS[0]!
 
-  function preview(voice = gemini ? settings.geminiVoice : settings.voice) {
-    speaker.speak(`preview:${voice}`, sample, gemini ? { geminiVoice: voice } : { voice })
+  function preview(voice = gemini ? settings.geminiVoice : openrouter ? settings.openrouterVoice : settings.voice) {
+    speaker.speak(
+      `preview:${voice}`,
+      sample,
+      gemini ? { geminiVoice: voice } : openrouter ? { openrouterVoice: voice } : { voice },
+    )
   }
 
   return (
@@ -174,11 +199,12 @@ function VoiceSettingsPage() {
             <div className="text-sm font-medium">{t.engine}</div>
             <p className="mt-0.5 text-sm text-muted-foreground">{t.engineHelp}</p>
           </div>
-          <div role="radiogroup" aria-label={t.engine} className="grid gap-2 sm:grid-cols-2">
+          <div role="radiogroup" aria-label={t.engine} className="grid gap-2 sm:grid-cols-3">
             {(
               [
                 ['gemini', t.gemini, t.geminiHelp],
                 ['edge', t.edge, t.edgeHelp],
+                ['openrouter', t.openrouter, t.openrouterHelp],
               ] as Array<[SpeechEngine, string, string]>
             ).map(([engine, label, help]) => (
               <button
@@ -245,7 +271,49 @@ function VoiceSettingsPage() {
           </>
         )}
 
-        {!gemini && (
+        {openrouter && (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div>
+                <div className="text-sm font-medium">{t.model}</div>
+                <p className="mt-0.5 text-sm text-muted-foreground">{t.openrouterModelHelp}</p>
+              </div>
+              <select
+                value={openrouterModel.id}
+                onChange={(e) => setSpeechSettings({ openrouterModel: e.target.value })}
+                aria-label={t.model}
+                className="h-8 max-w-60 rounded-lg border bg-background px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                {OPENROUTER_TTS_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-3 p-4">
+              <div>
+                <div className="text-sm font-medium">{t.voice}</div>
+                <p className="mt-0.5 text-sm text-muted-foreground">{t.openrouterVoiceHelp}</p>
+              </div>
+              <div role="radiogroup" aria-label={t.voice} className="grid gap-2 sm:grid-cols-3">
+                {openrouterModel.voices.map((voice) => (
+                  <VoiceOption
+                    key={voice}
+                    name={voice[0]!.toUpperCase() + voice.slice(1)}
+                    selected={voice === settings.openrouterVoice}
+                    previewing={speaker.activeId === `preview:${voice}`}
+                    loading={speaker.status === 'loading'}
+                    onSelect={() => setSpeechSettings({ openrouterVoice: voice })}
+                    onPreview={() => (speaker.activeId === `preview:${voice}` ? speaker.stop() : preview(voice))}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {edge && (
           <div className="flex flex-col gap-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -308,7 +376,7 @@ function VoiceSettingsPage() {
           format={(v) => `${v.toFixed(2)}×`}
           onChange={(speed) => setSpeechSettings({ speed })}
         />
-        {!gemini && (
+        {edge && (
           <SliderRow
             label={t.pitch}
             description={t.pitchHelp}

@@ -35,6 +35,17 @@ export function listThreads(userId: string): Array<Thread> {
   return rows.map(toThread)
 }
 
+// Matches the chat route's run TTL, so a run row left marked running cannot keep a thread spinning forever.
+const RUNNING_WINDOW = 15 * 60_000
+
+/** Threads with a model run still generating on the server, including runs whose browser tab moved on. */
+export function listRunningThreadIds(userId: string): Array<string> {
+  const rows = getDb()
+    .prepare("select distinct thread_id from chat_runs where user_id = ? and status = 'running' and started_at > ?")
+    .all(userId, Date.now() - RUNNING_WINDOW) as Array<{ thread_id: string }>
+  return rows.map((row) => row.thread_id)
+}
+
 /** Creates the thread, or follows the first message's title until the user has renamed it. */
 export function upsertThread(
   userId: string,

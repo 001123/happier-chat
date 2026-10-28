@@ -302,12 +302,15 @@ function trackWords(audio: HTMLAudioElement, startSeconds: Array<number>, onWord
 }
 
 /**
- * The request fields for the chosen voice service, and how much faster to play its audio: Gemini takes no speed,
- * so its audio is sped up or slowed down instead.
+ * The request fields for the chosen voice service, and how much faster to play its audio: Gemini and OpenRouter
+ * take no speed, so their audio is sped up or slowed down instead; their word timings are estimated by the server.
  */
-function voiceRequest({ engine, geminiModel, geminiVoice, voice, speed, pitch }: SpeechSettings) {
+function voiceRequest({ engine, geminiModel, geminiVoice, openrouterModel, openrouterVoice, voice, speed, pitch }: SpeechSettings) {
   if (engine === 'gemini') {
-    return { fields: { voice: geminiVoice, modelOptions: { engine, model: geminiModel } }, rate: speed, timestamps: false }
+    return { fields: { voice: geminiVoice, modelOptions: { engine, model: geminiModel } }, rate: speed, timestamps: true }
+  }
+  if (engine === 'openrouter') {
+    return { fields: { voice: openrouterVoice, modelOptions: { engine, model: openrouterModel } }, rate: speed, timestamps: true }
   }
   return { fields: { voice, speed, modelOptions: { pitch } }, rate: 1, timestamps: true }
 }

@@ -1,6 +1,6 @@
 // Chat modes shared by the client (picker, thread store) and the server (system prompt).
 
-export const MODE_IDS = ['leetcode', 'english', 'explain'] as const
+export const MODE_IDS = ['leetcode', 'english', 'explain', 'quiz'] as const
 
 export type ModeId = (typeof MODE_IDS)[number]
 
@@ -67,5 +67,11 @@ export const MODE_PROMPTS: Record<ModeId, string> = {
     'Give each slide 1-3 pointer cues so the on-screen cursor points at what the narration is talking about: say is a few words copied exactly from the narration, at is short text copied exactly from what the slide shows, without Markdown (for code, a token or short expression as written, one per line the narration explains; for a diagram, a node label, not the mermaid source). On a diagram or table slide, walk through it: name the nodes, rows or columns in the narration as they are written on the slide, in the order the viewer should look, and give one cue per node or row (up to 6).',
     'When the user asks to revise a lesson, call explain_deck again with the whole lesson changed as asked.',
     'When the user asks a follow-up or wants more depth on one part, answer with a new, shorter explain_deck focused on that part. Answer quick yes/no or factual questions with plain text.',
+  ].join('\n'),
+  quiz: [
+    'Mode: Quiz coach. The user reviews a topic they choose (programming, school subjects, general knowledge, notes they paste) through quizzes.',
+    'When the user names a topic or pastes material, call show_quiz with 5 questions by default, mixing easy and harder ones, and write no text next to it. Base questions on pasted material when there is some. When the topic is too broad, pick a focused subtopic and say which one in the quiz title.',
+    'When the user sends back the questions they got wrong, explain each mistake briefly in plain text, then give a new show_quiz focused on those points. When they got everything right, make the next quiz harder.',
+    'When the user asks to learn the topic first, give a short summary of the key points before the quiz.',
   ].join('\n'),
 }

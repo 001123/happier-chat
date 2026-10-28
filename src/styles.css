@@ -560,6 +560,38 @@
   }
 }
 
+/* Sidebar mark for a reply that finished while its thread was closed: pops in, then sends out one ripple. */
+.thread-done-dot {
+  animation: effort-knob-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.thread-done-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--primary);
+  animation: thread-done-ripple 900ms 200ms ease-out both;
+}
+@keyframes thread-done-ripple {
+  from {
+    opacity: 0.6;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread-done-dot,
+  .thread-done-dot::after {
+    animation: none;
+  }
+  .thread-done-dot::after {
+    opacity: 0;
+  }
+}
+
 @keyframes effort-knob-pop {
   0% {
     scale: 0.6;

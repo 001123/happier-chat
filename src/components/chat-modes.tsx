@@ -8,6 +8,7 @@ import {
   IconChevronDown,
   IconDice5,
   IconLanguage,
+  IconListCheck,
   IconLoader2,
   IconX,
 } from '@tabler/icons-react'
@@ -25,6 +26,7 @@ const MODE_ICONS: Record<ModeId, Icon> = {
   leetcode: IconBrandLeetcode,
   english: IconLanguage,
   explain: IconChalkboard,
+  quiz: IconListCheck,
 }
 
 const messages = defineMessages({
@@ -78,6 +80,16 @@ const messages = defineMessages({
           'Giải thích cách HTTPS bảo mật kết nối',
         ],
       },
+      quiz: {
+        name: 'Ôn tập bằng quiz',
+        description: 'Trắc nghiệm theo chủ đề bạn chọn, chấm và giải thích ngay',
+        starters: [
+          'Quiz 5 câu về SQL JOIN',
+          'Kiểm tra kiến thức Big-O của mình',
+          'Quiz lịch sử Việt Nam thế kỷ 20',
+          'Ôn tập TypeScript generics, độ khó vừa',
+        ],
+      },
     },
   },
   en: {
@@ -128,6 +140,16 @@ const messages = defineMessages({
           'When does React useEffect run?',
           'How is git rebase different from merge?',
           'Explain how HTTPS secures a connection',
+        ],
+      },
+      quiz: {
+        name: 'Quiz review',
+        description: 'Multiple-choice quizzes on any topic, graded and explained on the spot',
+        starters: [
+          'A 5-question quiz on SQL JOINs',
+          'Test my Big-O knowledge',
+          'Quiz me on world capitals',
+          'Review TypeScript generics, medium difficulty',
         ],
       },
     },

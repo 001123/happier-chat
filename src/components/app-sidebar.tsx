@@ -73,10 +73,13 @@ import {
   setThreadsArchived,
   useArchivedThreads,
   useLiveThreads,
+  trackRunningThreads,
   useThreadBusy,
+  useThreadDone,
 } from '@/lib/threads'
 import type { Thread, ThreadSort } from '@/lib/threads'
-import { defineMessages, useMessages } from '@/lib/i18n'
+import { LOCALE_TAGS, defineMessages, useLocale, useMessages } from '@/lib/i18n'
+import type { Locale } from '@/lib/i18n'
 
 /** Pencil over an open rounded square: the "compose" mark people know from ChatGPT. */
 function ComposeIcon({ className }: { className?: string }) {
@@ -150,6 +153,7 @@ const messages = defineMessages({
     confirmBody: 'Tin nhắn trong các cuộc trò chuyện này sẽ bị xoá vĩnh viễn và không thể khôi phục.',
     cancel: 'Huỷ',
     replying: 'Đang trả lời',
+    replied: 'Đã trả lời xong',
   },
   en: {
     sortNewest: 'Newest',
@@ -203,6 +207,7 @@ const messages = defineMessages({
     confirmBody: 'Messages in these conversations will be permanently deleted and cannot be recovered.',
     cancel: 'Cancel',
     replying: 'Replying',
+    replied: 'Reply finished',
   },
 })
 
@@ -246,15 +251,43 @@ function CheckMark({ state }: { state: boolean | 'mixed' }) {
   )
 }
 
-function TruncatedTitle({ text }: { text: string }) {
+/** `5 phút trước · 14:32 27/10/2026`: the relative age, then the exact time for precision. */
+function threadTime(at: number, locale: Locale) {
+  const tag = LOCALE_TAGS[locale]
+  const relativeTime = new Intl.RelativeTimeFormat(tag, { numeric: 'auto' })
+  const seconds = Math.round((at - Date.now()) / 1000)
+  const minutes = Math.round(seconds / 60)
+  const hours = Math.round(minutes / 60)
+  const days = Math.round(hours / 24)
+  const age =
+    Math.abs(seconds) < 60
+      ? relativeTime.format(0, 'second')
+      : Math.abs(minutes) < 60
+        ? relativeTime.format(minutes, 'minute')
+        : Math.abs(hours) < 24
+          ? relativeTime.format(hours, 'hour')
+          : Math.abs(days) < 30
+            ? relativeTime.format(days, 'day')
+            : Math.abs(days) < 365
+              ? relativeTime.format(Math.round(days / 30), 'month')
+              : relativeTime.format(Math.round(days / 365), 'year')
+  const exact = new Intl.DateTimeFormat(tag, { dateStyle: 'short', timeStyle: 'short' }).format(at)
+  return `${age} · ${exact}`
+}
+
+/** Hover card with the thread's last activity, plus its full title when the row truncates it. */
+function ThreadTitle({ text, updatedAt }: { text: string; updatedAt: number }) {
   const ref = React.useRef<HTMLSpanElement>(null)
+  const locale = useLocale()
   const [open, setOpen] = React.useState(false)
+  const [truncated, setTruncated] = React.useState(false)
   return (
     <Tooltip
       open={open}
       onOpenChange={(next) => {
         const el = ref.current
-        setOpen(next && !!el && el.scrollWidth > el.clientWidth)
+        if (next) setTruncated(!!el && el.scrollWidth > el.clientWidth)
+        setOpen(next)
       }}
     >
       <TooltipTrigger delay={400} render={<span ref={ref} />}>
@@ -264,9 +297,10 @@ function TruncatedTitle({ text }: { text: string }) {
         side="right"
         sideOffset={8}
         anchor={() => ref.current?.closest('[data-sidebar=menu-item]') ?? null}
-        className="break-words"
+        className="flex-col items-start gap-0.5 break-words"
       >
-        {text}
+        {truncated && <span>{text}</span>}
+        <span className={cn('text-[11px] tabular-nums', truncated && 'opacity-70')}>{open && threadTime(updatedAt, locale)}</span>
       </TooltipContent>
     </Tooltip>
   )
@@ -338,6 +372,7 @@ export function AppSidebar() {
   }
   // Sorting and the archived split happen in live queries; only the diacritic-insensitive search runs here.
   const liveAll = useLiveThreads(sort)
+  React.useEffect(() => void trackRunningThreads(), [])
   const archivedAll = useArchivedThreads(sort)
   const [query, setQuery] = React.useState('')
   const needle = normalize(query.trim())
@@ -626,7 +661,7 @@ export function AppSidebar() {
             className="group-focus-within/menu-item:pr-20! group-hover/menu-item:pr-20!"
           >
             <ThreadIcon id={thread.id} />
-            <TruncatedTitle text={thread.title} />
+            <ThreadTitle text={thread.title} updatedAt={thread.updatedAt} />
           </SidebarMenuButton>
         )}
         {!checkable && renamingThreadId !== thread.id && (
@@ -1088,6 +1123,15 @@ export function AppSidebar() {
 function ThreadIcon({ id }: { id: string }) {
   const t = useMessages(messages)
   const busy = useThreadBusy(id)
+  const done = useThreadDone(id)
+  if (done && !busy)
+    return (
+      <span className="relative inline-flex">
+        <IconMessage />
+        <span aria-hidden className="thread-done-dot absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+        <span className="sr-only">{t.replied}</span>
+      </span>
+    )
   if (!busy) return <IconMessage />
   return (
     <>

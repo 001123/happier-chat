@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useLocation, useRouteContext } from '@tanstack/react-router'
 import {
   IconBoxMultiple,
+  IconChartBar,
   IconKey,
   IconLanguage,
   IconMessage,
@@ -26,6 +27,7 @@ const messages = defineMessages({
     language: 'Ngôn ngữ',
     voice: 'Giọng nói',
     providers: 'Cấu hình AI',
+    usage: 'Thống kê',
     models: 'Model',
     users: 'Người dùng',
   },
@@ -39,6 +41,7 @@ const messages = defineMessages({
     language: 'Language',
     voice: 'Voice',
     providers: 'Providers',
+    usage: 'Usage',
     models: 'Models',
     users: 'Users',
   },
@@ -57,6 +60,7 @@ const sections = [
   { to: '/settings/language', label: 'language', icon: IconLanguage },
   { to: '/settings/voice', label: 'voice', icon: IconWaveSine },
   { to: '/settings/providers', label: 'providers', icon: IconKey },
+  { to: '/settings/usage', label: 'usage', icon: IconChartBar },
 ] as const
 
 const adminSections = [
@@ -65,7 +69,7 @@ const adminSections = [
 ] as const
 
 /** Pages built around a wide table take the full width; forms read better in a narrower column. */
-const WIDE_PAGES = new Set<string>(['/settings/admin/models'])
+const WIDE_PAGES = new Set<string>(['/settings/admin/models', '/settings/usage'])
 
 // Switching sections swaps only the page body, so skip the app-wide view transition
 // (a 380ms full-screen crossfade) and preload on hover so admin data is ready on click.

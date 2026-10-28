@@ -3,7 +3,17 @@ import { z } from 'zod'
 
 import { listUsers, setUserRole } from './admin.server'
 import { adminMiddleware } from './auth.functions'
-import { applySync, getCatalogMeta, listCatalogRows, previewSync, setCatalogOverride } from './catalog.server'
+import {
+  addManualModel,
+  applySync,
+  deleteManualModel,
+  deleteScheduledPrice,
+  getCatalogMeta,
+  listCatalogRows,
+  previewSync,
+  setCatalogOverride,
+  setScheduledPrice,
+} from './catalog.server'
 import { assertSameOrigin } from './session.server'
 import { defineMessages, getLocale } from '@/lib/i18n'
 
@@ -69,6 +79,77 @@ export const updateCatalogOverride = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     assertSameOrigin()
     setCatalogOverride(data.providerId, data.modelId, data.override)
+    return { ok: true }
+  })
+
+const catalogKey = {
+  providerId: z.string().trim().min(1).max(100),
+  modelId: z.string().trim().min(1).max(200),
+}
+
+export const addCatalogModel = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(
+    z.object({
+      ...catalogKey,
+      name: z.string().trim().max(200),
+      context: tokens.nullable(),
+      output: tokens.nullable(),
+      cost: z.object({ input: price, output: price, cacheRead: price.nullable(), cacheWrite: price.nullable() }),
+    }),
+  )
+  .handler(async ({ data }) => {
+    assertSameOrigin()
+    addManualModel(data.providerId, {
+      id: data.modelId,
+      name: data.name || data.modelId,
+      family: null,
+      releaseDate: null,
+      context: data.context,
+      output: data.output,
+      cost: data.cost,
+      input: ['text'],
+      reasoning: false,
+      toolCall: false,
+      attachment: false,
+      openWeights: false,
+    })
+    return { ok: true }
+  })
+
+export const deleteCatalogModel = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(z.object(catalogKey))
+  .handler(async ({ data }) => {
+    assertSameOrigin()
+    deleteManualModel(data.providerId, data.modelId)
+    return { ok: true }
+  })
+
+// A day as YYYY-MM-DD, taking effect at its UTC midnight.
+const effectiveDay = z.iso.date().transform((day) => Date.parse(`${day}T00:00:00Z`))
+
+export const scheduleCatalogPrice = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(
+    z.object({
+      ...catalogKey,
+      effectiveFrom: effectiveDay,
+      cost: z.object({ input: price, output: price, cacheRead: price.nullable(), cacheWrite: price.nullable() }),
+    }),
+  )
+  .handler(async ({ data }) => {
+    assertSameOrigin()
+    setScheduledPrice(data.providerId, data.modelId, { effectiveFrom: data.effectiveFrom, cost: data.cost })
+    return { ok: true }
+  })
+
+export const deleteCatalogPrice = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .validator(z.object({ ...catalogKey, effectiveFrom: z.number().int() }))
+  .handler(async ({ data }) => {
+    assertSameOrigin()
+    deleteScheduledPrice(data.providerId, data.modelId, data.effectiveFrom)
     return { ok: true }
   })
 

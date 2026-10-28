@@ -24,6 +24,8 @@ const MODE_TOPICS: Record<ModeId, string> = {
     'The user learns English with a tutor: vocabulary on a theme, fixing a sentence with a mistake (include the sentence), a quiz on a grammar point, or role-playing an everyday conversation.',
   explain:
     'The user asks for a short narrated slide lesson explaining one concept, mostly programming, web, computer science or how a technology works.',
+  quiz:
+    'The user asks for a multiple-choice quiz to review one topic: programming, computer science, school subjects or general knowledge, sometimes with a difficulty or number of questions.',
 }
 
 const StartersSchema = z.object({

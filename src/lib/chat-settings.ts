@@ -20,6 +20,8 @@ export type ChatSettings = {
   replyLanguages: Array<Locale> | null
   /** The slide explainer style picked last; threads that never picked one follow it. */
   explainStyle: ExplainStyleId
+  /** Quiz cards read each question, its options and the result aloud. */
+  quizReadAloud: boolean
 }
 
 export const CUSTOM_INSTRUCTIONS_MAX = 4000
@@ -69,6 +71,7 @@ const DEFAULTS: ChatSettings = {
   customInstructions: '',
   replyLanguages: null,
   explainStyle: DEFAULT_EXPLAIN_STYLE,
+  quizReadAloud: false,
 }
 
 /** Mirrors the composer's model and effort so the server renders the composer as the browser will show it. */

@@ -46,6 +46,7 @@ import { chatPersistenceFor } from '@/server/chat-persistence.server'
 import { createSandboxCodeMode } from '@/server/code-mode.server'
 import { createUserAdapter } from '@/server/providers.server'
 import { getSessionUser } from '@/server/session.server'
+import { chatUsageMiddleware } from '@/server/usage.server'
 
 const copy = defineMessages({
   vi: {
@@ -402,7 +403,12 @@ export const Route = createFileRoute('/api/chat')({
           // The default cap of 5 model turns ends research runs (search + several fetch_page calls)
           // right after a tool call, before the model gets to write a reply. finalStep forces one.
           agentLoopStrategy: combineStrategies([maxIterations(MAX_STEPS), untilFinishReason(['length'])]),
-          middleware: [finalStep, stopAfterUi, withPersistence(chatPersistenceFor(user.id))],
+          middleware: [
+            finalStep,
+            stopAfterUi,
+            withPersistence(chatPersistenceFor(user.id)),
+            chatUsageMiddleware(user.id, resolved.catalogProvider),
+          ],
           abortController,
         })
 

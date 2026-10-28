@@ -1,11 +1,12 @@
 import { Effect, Predicate, Schedule, Schema } from 'effect'
 
-import { applyOverride, DEFAULT_CATALOG_PROVIDERS } from '@/lib/model-catalog'
+import { applyOverride, applySchedule, DEFAULT_CATALOG_PROVIDERS, nextPrice } from '@/lib/model-catalog'
 import type {
   AdminCatalogRow,
   CatalogMeta,
   CatalogModel,
   CatalogOverride,
+  ScheduledPrice,
   SyncChange,
   SyncPreview,
 } from '@/lib/model-catalog'
@@ -21,6 +22,7 @@ const messages = defineMessages({
     timeout: 'models.dev phản hồi quá lâu',
     previewExpired: 'Bản xem trước đã hết hạn, hãy kiểm tra cập nhật lại',
     modelNotFound: 'Không tìm thấy model',
+    modelExists: 'Model này đã có trong danh mục; hãy sửa nó thay vì thêm mới',
     unknownProviders: (ids: string) => `models.dev không có provider: ${ids}`,
   },
   en: {
@@ -30,6 +32,7 @@ const messages = defineMessages({
     timeout: 'models.dev took too long to respond',
     previewExpired: 'The preview has expired, please check for updates again',
     modelNotFound: 'Model not found',
+    modelExists: 'This model is already in the catalog; edit it instead',
     unknownProviders: (ids: string) => `models.dev has no provider: ${ids}`,
   },
 })
@@ -75,7 +78,8 @@ type Pending = {
 
 let pending: Pending | null = null
 let cache: Record<string, Record<string, CatalogModel>> | null = null
-let index: Map<string, CatalogModel> | null = null
+let index: Map<string, { providerId: string; model: CatalogModel }> | null = null
+let schedules: Map<string, Array<ScheduledPrice>> | null = null
 
 type MetaRow = { providers: string; etag: string | null; synced_at: number | null }
 
@@ -107,7 +111,13 @@ function slimModel(id: string, raw: Record<string, any>): CatalogModel {
     context: num(raw.limit?.context),
     output: num(raw.limit?.output),
     cost: cost
-      ? { input: num(cost.input), output: num(cost.output), cacheRead: num(cost.cache_read), cacheWrite: num(cost.cache_write) }
+      ? {
+          input: num(cost.input),
+          output: num(cost.output),
+          cacheRead: num(cost.cache_read),
+          cacheWrite: num(cost.cache_write),
+          outputAudio: num(cost.output_audio),
+        }
       : null,
     input: Array.isArray(raw.modalities?.input) ? raw.modalities.input.filter((item: unknown) => typeof item === 'string') : [],
     reasoning: raw.reasoning === true,
@@ -185,7 +195,7 @@ export async function previewSync(providers: Array<string>): Promise<SyncPreview
   if (unknown.length) throw new Error(messages[getLocale()].unknownProviders(unknown.join(', ')))
 
   const stored = new Map<string, string>()
-  const rows = getDb().prepare('select provider_id, model_id, data from model_catalog').all() as Array<{
+  const rows = getDb().prepare('select provider_id, model_id, data from model_catalog where manual = 0').all() as Array<{
     provider_id: string
     model_id: string
     data: string
@@ -242,7 +252,7 @@ export function applySync(token: string) {
   const now = Date.now()
   const upsert = db.prepare(
     `insert into model_catalog (provider_id, model_id, data, updated_at) values (?, ?, ?, ?)
-     on conflict(provider_id, model_id) do update set data = excluded.data,
+     on conflict(provider_id, model_id) do update set data = excluded.data, manual = 0,
        updated_at = case when model_catalog.data = excluded.data then model_catalog.updated_at else excluded.updated_at end`,
   )
   db.exec('begin')
@@ -257,7 +267,7 @@ export function applySync(token: string) {
       }
     }
     db.exec(
-      'delete from model_catalog where not exists (select 1 from synced where synced.provider_id = model_catalog.provider_id and synced.model_id = model_catalog.model_id)',
+      'delete from model_catalog where manual = 0 and not exists (select 1 from synced where synced.provider_id = model_catalog.provider_id and synced.model_id = model_catalog.model_id)',
     )
     db.prepare(
       `insert into catalog_meta (id, providers, etag, synced_at) values (1, ?, ?, ?)
@@ -273,18 +283,53 @@ export function applySync(token: string) {
   return getCatalogMeta()
 }
 
-type CatalogRow = { provider_id: string; model_id: string; data: string; override: string | null; updated_at: number }
+type CatalogRow = {
+  provider_id: string
+  model_id: string
+  data: string
+  override: string | null
+  updated_at: number
+  manual: number
+}
 
 export function listCatalogRows(): Array<AdminCatalogRow> {
   const rows = getDb()
-    .prepare('select provider_id, model_id, data, override, updated_at from model_catalog order by provider_id, model_id')
+    .prepare('select provider_id, model_id, data, override, updated_at, manual from model_catalog order by provider_id, model_id')
     .all() as Array<CatalogRow>
+  const schedule = getSchedules()
   return rows.map((row) => ({
+    schedule: schedule.get(scheduleKey(row.provider_id, row.model_id)) ?? [],
     providerId: row.provider_id,
     model: JSON.parse(row.data) as CatalogModel,
     override: row.override ? (JSON.parse(row.override) as CatalogOverride) : null,
     updatedAt: row.updated_at,
+    manual: row.manual === 1,
   }))
+}
+
+/**
+ * Adds a model models.dev does not list. Once models.dev lists it under the same provider, a sync takes
+ * the row over and keeps any override.
+ */
+export function addManualModel(providerId: string, model: CatalogModel) {
+  const result = getDb()
+    .prepare(
+      `insert into model_catalog (provider_id, model_id, data, updated_at, manual) values (?, ?, ?, ?, 1)
+       on conflict(provider_id, model_id) do nothing`,
+    )
+    .run(providerId, model.id, JSON.stringify(model), Date.now())
+  if (result.changes === 0) throw new Error(messages[getLocale()].modelExists)
+  cache = index = null
+}
+
+/** Removes a model an admin added; synced models are only removed by a sync. */
+export function deleteManualModel(providerId: string, modelId: string) {
+  const result = getDb()
+    .prepare('delete from model_catalog where provider_id = ? and model_id = ? and manual = 1')
+    .run(providerId, modelId)
+  if (result.changes === 0) throw new Error(messages[getLocale()].modelNotFound)
+  getDb().prepare('delete from model_price_schedule where provider_id = ? and model_id = ?').run(providerId, modelId)
+  cache = index = schedules = null
 }
 
 /** Saves an admin override, or clears it when `override` is null or empty. */
@@ -311,19 +356,70 @@ export function getCatalog() {
 /** Strips a vendor prefix and lowercases, so `anthropic/Claude-X` and `claude-x` meet. */
 const bareId = (modelId: string) => modelId.slice(modelId.lastIndexOf('/') + 1).toLowerCase()
 
-/**
- * Details for a model a user enabled: the provider's own entry first, then any synced provider
- * with the same bare id, which covers custom gateways that re-serve well-known models.
- */
-export function findCatalogModel(providerId: string, modelId: string): CatalogModel | null {
+function locateModel(providerId: string, modelId: string) {
   const catalog = getCatalog()
   const own = catalog[providerId]?.[modelId]
-  if (own) return own
+  if (own) return { providerId, model: own }
   if (!index) {
     index = new Map()
-    for (const models of Object.values(catalog)) {
-      for (const model of Object.values(models)) if (!index.has(bareId(model.id))) index.set(bareId(model.id), model)
+    for (const [id, models] of Object.entries(catalog)) {
+      for (const model of Object.values(models)) {
+        if (!index.has(bareId(model.id))) index.set(bareId(model.id), { providerId: id, model })
+      }
     }
   }
   return index.get(bareId(modelId)) ?? null
+}
+
+/**
+ * Details for a model a user enabled, priced as of `at`: the provider's own entry first, then any synced
+ * provider with the same bare id, which covers custom gateways that re-serve well-known models.
+ */
+export function findCatalogModel(providerId: string, modelId: string, at = Date.now()): CatalogModel | null {
+  const found = locateModel(providerId, modelId)
+  if (!found) return null
+  return applySchedule(found.model, getSchedules().get(scheduleKey(found.providerId, found.model.id)), at)
+}
+
+/** The next scheduled price change of a model, if one is coming. */
+export function findNextPrice(providerId: string, modelId: string, now = Date.now()) {
+  const found = locateModel(providerId, modelId)
+  if (!found) return null
+  return nextPrice(getSchedules().get(scheduleKey(found.providerId, found.model.id)), now)
+}
+
+const scheduleKey = (providerId: string, modelId: string) => `${providerId}\u0000${modelId}`
+
+function getSchedules() {
+  if (schedules) return schedules
+  const rows = getDb()
+    .prepare('select provider_id, model_id, effective_from, cost from model_price_schedule order by effective_from')
+    .all() as Array<{ provider_id: string; model_id: string; effective_from: number; cost: string }>
+  const next = new Map<string, Array<ScheduledPrice>>()
+  for (const row of rows) {
+    const key = scheduleKey(row.provider_id, row.model_id)
+    next.set(key, [...(next.get(key) ?? []), { effectiveFrom: row.effective_from, cost: JSON.parse(row.cost) }])
+  }
+  schedules = next
+  return next
+}
+
+/** Schedules a price from `effectiveFrom`, replacing one already set for that day. */
+export function setScheduledPrice(providerId: string, modelId: string, price: ScheduledPrice) {
+  const exists = getDb().prepare('select 1 from model_catalog where provider_id = ? and model_id = ?').get(providerId, modelId)
+  if (!exists) throw new Error(messages[getLocale()].modelNotFound)
+  getDb()
+    .prepare(
+      `insert into model_price_schedule (provider_id, model_id, effective_from, cost) values (?, ?, ?, ?)
+       on conflict(provider_id, model_id, effective_from) do update set cost = excluded.cost`,
+    )
+    .run(providerId, modelId, price.effectiveFrom, JSON.stringify(price.cost))
+  schedules = null
+}
+
+export function deleteScheduledPrice(providerId: string, modelId: string, effectiveFrom: number) {
+  getDb()
+    .prepare('delete from model_price_schedule where provider_id = ? and model_id = ? and effective_from = ?')
+    .run(providerId, modelId, effectiveFrom)
+  schedules = null
 }

@@ -9,7 +9,7 @@ import { LOCALE_TAGS, getLocale } from '@/lib/i18n'
 import { getDbQueryClient, persist, reportFailure } from '@/lib/db'
 import { useHydrated } from '@/lib/hydrated'
 import { clearReactions } from '@/lib/reactions'
-import { getThreads, importLocalThread, removeThreads, saveThread, updateThreads } from '@/server/threads.functions'
+import { getRunningThreads, getThreads, importLocalThread, removeThreads, saveThread, updateThreads } from '@/server/threads.functions'
 import type { ExplainStyleId, ModeId } from '@/lib/modes'
 
 export type Thread = {
@@ -249,6 +249,79 @@ export function setThreadBusy(id: string, on: boolean) {
 
 export function useThreadBusy(id: string) {
   return useSelector(busy, (ids) => ids.has(id))
+}
+
+// A run keeps generating on the server after its chat view unmounts. Views that are open own their busy flag;
+// for the rest, poll the server until their runs finish.
+const attached = new Set<string>()
+const detached = new Set<string>()
+const POLL_MS = 2000
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+
+// Background runs that finished since the user last opened the thread.
+const done = new Store<ReadonlySet<string>>(new Set<string>())
+
+function setThreadDone(id: string, on: boolean) {
+  if (done.get().has(id) === on) return
+  done.setState((prev) => {
+    const next = new Set(prev)
+    if (on) next.add(id)
+    else next.delete(id)
+    return next
+  })
+}
+
+export function useThreadDone(id: string) {
+  return useSelector(done, (ids) => ids.has(id))
+}
+
+export function attachThreadView(id: string) {
+  attached.add(id)
+  detached.delete(id)
+  setThreadDone(id, false)
+}
+
+/** Called when a chat view unmounts; `running` keeps the thread busy until the server run ends. */
+export function detachThreadView(id: string, running: boolean) {
+  attached.delete(id)
+  if (running) trackDetachedRun(id)
+  else setThreadBusy(id, false)
+}
+
+/** Picks up runs already generating when the app loads, e.g. after a reload mid-reply. */
+export async function trackRunningThreads() {
+  try {
+    for (const id of await getRunningThreads()) trackDetachedRun(id)
+  } catch (error) {
+    console.error('Could not load running threads', error)
+  }
+}
+
+function trackDetachedRun(id: string) {
+  if (attached.has(id)) return
+  detached.add(id)
+  setThreadBusy(id, true)
+  schedulePoll()
+}
+
+function schedulePoll() {
+  if (pollTimer === undefined && detached.size > 0) pollTimer = setTimeout(pollRunningThreads, POLL_MS)
+}
+
+async function pollRunningThreads() {
+  try {
+    const running = new Set(await getRunningThreads())
+    for (const id of detached) {
+      if (running.has(id)) continue
+      detached.delete(id)
+      setThreadBusy(id, false)
+      setThreadDone(id, true)
+    }
+  } catch {
+    // Offline or signed out: keep the spinners and try again on the next tick.
+  }
+  pollTimer = undefined
+  schedulePoll()
 }
 
 export function hasThread(id: string) {
