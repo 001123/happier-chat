@@ -69,7 +69,7 @@ export type ProviderInput = Omit<Endpoints, 'apiKey'> & {
 const encryptKey = (apiKey?: string) => (apiKey ? encrypt(apiKey) : '')
 const decryptKey = (stored: string) => (stored ? decrypt(stored) : '')
 
-function keyHint(apiKey: string) {
+export function keyHint(apiKey: string) {
   if (!apiKey) return ''
   return apiKey.length <= 8 ? '••••' : `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`
 }

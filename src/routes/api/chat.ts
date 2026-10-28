@@ -39,7 +39,8 @@ import { CUSTOM_INSTRUCTIONS_MAX } from '@/lib/chat-settings'
 import { buildSpec, renderUiDef, specIssues } from '@/lib/generative-ui'
 import { EXPLAIN_STYLE_PROMPTS, MODE_PROMPTS, isExplainStyleId, isModeId } from '@/lib/modes'
 import type { ExplainStyleId } from '@/lib/modes'
-import type { Weather, WeatherCondition } from '@/lib/tools'
+import { svgIssues } from '@/lib/svg-check'
+import type { Visual, Weather, WeatherCondition } from '@/lib/tools'
 import { parseModelKey } from '@/lib/providers'
 import { chatPersistenceFor } from '@/server/chat-persistence.server'
 import { createSandboxCodeMode } from '@/server/code-mode.server'
@@ -160,6 +161,37 @@ const roleplayTurn = roleplayTurnDef.server(async () => ({ shown: true }))
 const showDrawingBoard = showDrawingBoardDef.server(async () => ({ shown: true }))
 
 const MERMAID_BLOCK = /```mermaid[^\n]*\n([\s\S]*?)```/g
+const SVG_BLOCK = /```svg[^\n]*\n([\s\S]*?)```/g
+
+const MAX_MARK_NAMES = 3
+
+/** What would draw a visual slide wrong: indexes past its items, a bar that is not a number, too many marks. */
+function visualIssues(visual: Visual | undefined): Array<string> {
+  if (!visual) return ['the visual layout needs visual']
+  const { items, steps } = visual
+  const issues: Array<string> = []
+  if (visual.kind === 'bars' && items.some((item) => !Number.isFinite(Number(item))))
+    issues.push('bars items must all be numbers; use cells for text')
+  const names = new Set<string>()
+  for (const [i, step] of steps.entries()) {
+    const indexes = [
+      ...(step.marks ?? []).map((mark) => mark.at),
+      ...(step.highlight ?? []),
+      ...(step.window ? [step.window.from, step.window.to] : []),
+      ...(step.arrow ? [step.arrow.from, step.arrow.to] : []),
+      ...(step.set ?? []).map((change) => change.at),
+      ...(step.swap ?? []),
+      ...(step.done ?? []),
+    ]
+    const outside = indexes.find((index) => index < 0 || index >= items.length)
+    if (outside !== undefined) issues.push(`visual.steps/${i}: index ${outside} is outside the ${items.length} items (0-${items.length - 1})`)
+    if (step.window && step.window.from > step.window.to) issues.push(`visual.steps/${i}: window.from must not be after window.to`)
+    if (step.swap && step.swap[0] === step.swap[1]) issues.push(`visual.steps/${i}: swap needs two different positions`)
+    for (const mark of step.marks ?? []) names.add(mark.name)
+  }
+  if (names.size > MAX_MARK_NAMES) issues.push(`visual uses ${names.size} mark names; use at most ${MAX_MARK_NAMES}`)
+  return issues
+}
 
 // Diagrams are checked with the same parser the chat renders them with, so a broken one comes back to the model to fix.
 // Each layout's own field is checked too, since the schema leaves them optional. The result records the style the
@@ -183,6 +215,10 @@ const explainDeckFor = (style: ExplainStyleId | undefined) => explainDeckDef.ser
       } catch (error) {
         problems.push(`${at}: mermaid diagram does not parse: ${(error as Error).message}`)
       }
+    }
+    if (layout === 'visual') problems.push(...visualIssues(slide.visual).map((issue) => `${at}: ${issue}`))
+    for (const [, source] of (slide.content ?? '').matchAll(SVG_BLOCK)) {
+      for (const issue of svgIssues(source!)) problems.push(`${at}: svg drawing: ${issue}`)
     }
     return problems
   })

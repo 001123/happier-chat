@@ -103,6 +103,13 @@ const SCHEMA = `
   create index if not exists chat_interrupts_thread on chat_interrupts(user_id, thread_id, requested_at);
   create index if not exists chat_interrupts_run on chat_interrupts(user_id, run_id, requested_at);
 
+  -- A user's own Gemini API key for speech; without one the server's key is used.
+  create table if not exists speech_keys (
+    user_id text primary key references users(id) on delete cascade,
+    gemini_key_enc text not null,
+    updated_at integer not null
+  );
+
   create table if not exists catalog_meta (
     id integer primary key check (id = 1),
     providers text not null,

@@ -23,12 +23,15 @@ import { code } from '@streamdown/code'
 
 import { useExplainStyleNames } from '@/components/chat-modes'
 import { runnableCodeRenderers } from '@/components/runnable-code-block'
+import { svgRenderer } from '@/components/slide-svg'
+import { SlideVisual } from '@/components/slide-visual'
 import { Button } from '@/components/ui/button'
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { peleMermaid } from '@/lib/pele-mermaid'
+import { markDrawable } from '@/lib/draw-in'
 import { appHotkeys, useShortcutLabel, withShortcut } from '@/lib/shortcuts'
 import { createPersistedStore, useStoreValue } from '@/lib/store'
 import type { ExplainStyleId } from '@/lib/modes'
@@ -38,7 +41,9 @@ import type { useSpeaker } from '@/lib/use-speaker'
 type Speaker = ReturnType<typeof useSpeaker>
 type Slide = ExplainDeckInput['slides'][number]
 
-const STREAMDOWN_PLUGINS = { code, mermaid: peleMermaid, renderers: runnableCodeRenderers }
+// Slides also draw ```svg blocks, which the chat shows as code.
+const STREAMDOWN_PLUGINS = { code, mermaid: peleMermaid, renderers: [...runnableCodeRenderers, svgRenderer] }
+const FIGURE_ONLY = /^\s*```(?:mermaid|svg)[^\n]*\n[\s\S]*?```\s*$/
 
 const RATES = [0.75, 1, 1.25, 1.5, 2]
 const PLAYER_DEFAULTS = { rate: 1, volume: 1, muted: false }
@@ -57,6 +62,8 @@ const messages = defineMessages({
     next: 'Slide sau',
     goTo: (n: number) => `Đến slide ${n}`,
     building: (n: number) => `Đang tạo slide ${n}…`,
+    speechFailed: 'Không phát được giọng đọc. Bấm phát để thử lại.',
+    speechBlocked: 'Trình duyệt chặn tự phát âm thanh. Bấm phát để nghe.',
     preparing: 'Đang soạn bài giảng…',
     speed: 'Tốc độ đọc',
     volume: 'Âm lượng',
@@ -88,6 +95,8 @@ const messages = defineMessages({
     next: 'Next slide',
     goTo: (n: number) => `Go to slide ${n}`,
     building: (n: number) => `Building slide ${n}…`,
+    speechFailed: 'The narration could not be played. Press play to try again.',
+    speechBlocked: 'The browser blocked audio from playing on its own. Press play to listen.',
     preparing: 'Preparing the lesson…',
     speed: 'Narration speed',
     volume: 'Volume',
@@ -158,6 +167,9 @@ export function ExplainCard({
   const [part, setPart] = React.useState<0 | 1>(0)
   // The quiz narration has ended and the player is waiting for the viewer to pick an option.
   const [awaiting, setAwaiting] = React.useState(false)
+  // The narration failed to play, so the deck paused; said next to the controls instead of stopping silently. The
+  // browser blocks audio that starts without a click (a deck resumed after a reload), and one click fixes that.
+  const [failed, setFailed] = React.useState<{ blocked: boolean; reason: string } | null>(null)
   const [answers, setAnswers] = React.useState<Record<number, number>>({})
   const [revision, setRevision] = React.useState('')
   // Where in the narration each built step of the slide appears, and its text, so the cursor can follow the build.
@@ -182,9 +194,16 @@ export function ExplainCard({
     if (!playing || !ready || !slide) return
     let cancelled = false
     setSpoken(-1)
+    setFailed(null)
     void speaker
       .speak(speechId, [{ text: caption, element: captionRef.current ?? undefined }], undefined, {
         onProgress: (offset) => !cancelled && setSpoken(offset),
+        onError: (error) => {
+          if (cancelled) return
+          setFailed({ blocked: error.name === 'NotAllowedError', reason: error.message })
+          // The big play button is the click the browser waits for.
+          if (error.name === 'NotAllowedError') setStarted(false)
+        },
         playbackRate: rate,
         volume: loudness,
       })
@@ -206,6 +225,19 @@ export function ExplainCard({
     }
     // Restart only when the slide or play state changes, not on every streamed token.
   }, [playing, ready, speechId, speaker.speak])
+
+  // Narration is synthesized ahead so a slide starts without a wait: the next one while this one plays, and this one
+  // as soon as the viewer reaches for the deck (see `warmUp`). It is read as one segment with progress, like above.
+  const preloadSlide = (at: number) => {
+    const narration = slides[at]?.narration
+    if (at < readyCount && narration) speaker.preload([{ text: narration }], undefined, { progress: true })
+  }
+  React.useEffect(() => {
+    if (playing && ready) preloadSlide(index + 1)
+  }, [playing, ready, index, index + 1 < readyCount])
+  function warmUp() {
+    if (!playing) preloadSlide(ended ? 0 : index)
+  }
 
   // A rejected deck unmounts while it may still be narrating; stop it so the corrected one starts clean.
   const speakerRef = React.useRef(speaker)
@@ -308,14 +340,17 @@ export function ExplainCard({
     const marked = Array.from(root.querySelectorAll<HTMLElement>('[data-build]'))
     const selector = marked.length ? '[data-build]' : 'li:not(li li)'
     const items = marked.length ? marked : Array.from(root.querySelectorAll<HTMLElement>(selector))
+    // Diagrams build too: nodes as the narration names them, arrows once both ends are up or their label is said.
+    const diagram = diagramReveal(root, slide.narration ?? '', cues)
     if (!building) {
-      for (const li of items) li.removeAttribute('data-reveal')
+      for (const el of [...items, ...diagram.map((part) => part.el)]) el.removeAttribute('data-reveal')
       return
     }
     if (!ready) {
-      for (const li of items) li.setAttribute('data-reveal', 'hidden')
+      for (const el of [...items, ...diagram.map((part) => part.el)]) el.setAttribute('data-reveal', 'hidden')
       return
     }
+    for (const { el, start } of diagram) el.setAttribute('data-reveal', Math.max(0, start - lead) <= spoken ? 'shown' : 'hidden')
     const starts =
       items.length < 2
         ? items.map(() => 0)
@@ -336,9 +371,37 @@ export function ExplainCard({
       return size ? [{ start: starts[index]!, size, target: { selector, index } }] : []
     })
     setSteps((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next))
-    const found = pointerMarks(root, slide.narration ?? '')
+    // The cursor never visits a diagram part before it is drawn: an arrow's label said before both its ends are up
+    // would point at empty space.
+    const startOf = new Map(diagram.map((part) => [part.el, part.start]))
+    const found = pointerMarks(root, slide.narration ?? '').filter((mark) => {
+      if (typeof mark.target === 'string') return true
+      const el = root.querySelectorAll(mark.target.selector)[mark.target.index ?? 0]
+      return (el ? startOf.get(el) ?? 0 : 0) <= mark.start
+    })
     setMarks((previous) => (JSON.stringify(previous) === JSON.stringify(found) ? previous : found))
   })
+  // Diagrams and drawings render after the slide does, so the build above runs again once they are in, to mark and
+  // tint them even while the deck is paused. Its own marks change attributes only, so they do not call it again.
+  const [, setRendered] = React.useState(0)
+  React.useEffect(() => {
+    const root = contentRef.current
+    if (!root) return
+    let frame = 0
+    const observer = new MutationObserver((records) => {
+      const drawn = records.some((record) =>
+        Array.from(record.addedNodes).some((node) => node instanceof Element && (node.matches('svg') || node.querySelector('svg'))),
+      )
+      if (!drawn) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => setRendered((count) => count + 1))
+    })
+    observer.observe(root, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [index, slides.length > 0])
   if (slides.length === 0) return <ExplainCardSkeleton />
 
   // The cursor also follows the build, landing on each step as it appears, and visits the diagram nodes and table
@@ -371,13 +434,22 @@ export function ExplainCard({
   const pointerSweep = event
     ? Math.min(1, Math.max(0, (spoken - event.start) / Math.max(1, event.length)))
     : Math.min(1, Math.max(0, spoken / Math.max(1, events[0]?.from ?? caption.length)))
-  const pointerVisible = playing && ready && spoken >= 0 && part === 0
+  // A visual slide's own motion shows where to look, so the cursor stays away from it.
+  const pointerVisible = playing && ready && spoken >= 0 && part === 0 && slide.layout !== 'visual'
 
   // How much of the current slide has been read, so its progress segment fills like a video timeline. A quiz
   // spends the first half on its question and the second on its explanation.
   const partProgress = spoken < 0 || !caption ? 0 : Math.min(1, spoken / caption.length)
   const slideProgress = ended ? 1 : quiz ? (awaiting ? 0.5 : (part + partProgress) / 2) : partProgress
   const layout = slide.layout ?? 'content'
+  // A visual slide plays its steps as the narration reaches their words; browsed while paused, it shows the end.
+  const visualSteps = layout === 'visual' ? (slide.visual?.steps ?? []) : []
+  const visualStarts = visualSteps.length ? revealStarts(slide.narration ?? '', visualSteps.map((step) => step?.say ?? '')) : []
+  const visualStep = !building
+    ? visualSteps.length
+    : !ready
+      ? 0
+      : visualStarts.filter((start) => Math.max(0, start - lead) <= spoken).length
   const playLabel = playing ? t.pause : ended ? t.replay : t.play
 
   return (
@@ -385,6 +457,8 @@ export function ExplainCard({
       ref={cardRef}
       // Focusable so the player keys work once the viewer clicks into the deck.
       tabIndex={0}
+      onPointerEnter={warmUp}
+      onFocus={warmUp}
       className={cn(
         'flex w-full flex-col overflow-hidden bg-card text-card-foreground outline-none animate-in fade-in slide-in-from-bottom-1 duration-200',
         fullscreen
@@ -443,6 +517,8 @@ export function ExplainCard({
               ref={contentRef}
               // Lets CSS hide build steps the moment they render, before the layout effect has marked them.
               data-building={building || undefined}
+              // A slide that is only a diagram or drawing shows it large, like an illustration.
+              data-figure={(layout === 'content' && FIGURE_ONLY.test(slide.content ?? '')) || undefined}
               className={cn('min-w-0 text-chat', layout === 'title' && 'max-w-md text-balance text-muted-foreground')}
             >
               {layout === 'cards' ? (
@@ -459,6 +535,8 @@ export function ExplainCard({
                     labels={t}
                   />
                 )
+              ) : layout === 'visual' ? (
+                <SlideVisual visual={slide.visual ?? {}} step={visualStep} />
               ) : (
                 <Streamdown animated isAnimating={streaming && !ready} plugins={STREAMDOWN_PLUGINS}>
                   {slide.content ?? ''}
@@ -554,6 +632,11 @@ export function ExplainCard({
             <IconPlayerSkipForwardFilled />
           </Button>
           {streaming && <span className="text-xs text-muted-foreground">{t.building(slides.length)}</span>}
+          {failed && !playing && (
+            <span className="text-xs text-destructive" title={failed.reason}>
+              {failed.blocked ? t.speechBlocked : t.speechFailed}
+            </span>
+          )}
           {/* The slider opens on hover or focus, like a video player's, so the bar stays as quiet as before. */}
           <div className="group/volume ml-auto flex items-center">
             <Button
@@ -1175,6 +1258,116 @@ function pointerMarks(root: HTMLElement, narration: string): Array<PointerMark> 
     p.textContent?.trim() && !p.closest('li, table') ? [{ selector: 'p', index }] : [],
   )
   return spread(paragraphs, 0.45, 0.9)
+}
+
+// Mindmaps draw each branch's edges together with its nodes, so they cannot build node by node and show whole.
+const BUILT_DIAGRAM = '.pele:not(.pele-mindmap)'
+// Parts that come in a set order: sequence messages, git commits, timeline periods and events.
+const SEQUENCED = '.pele-message, .pele-commit, .pele-period, .pele-event'
+// Strokes worth drawing in, as the outline of a shape or the line of an arrow.
+const DRAWABLE = 'path:not(.pele-marker), line, polyline, polygon, circle, ellipse, rect'
+const MAX_TONES = 5
+
+// Which nodes an edge joins never changes for a rendered diagram, so its ends are measured once.
+const edgeEnds = new WeakMap<Element, [string | null, string | null]>()
+
+/** The nodes nearest each end of an edge's line, found by geometry since not every diagram names them in its ids. */
+function endsOf(edge: Element, nodes: Array<{ key: string; el: Element }>): [string | null, string | null] {
+  const known = edgeEnds.get(edge)
+  if (known) return known
+  const line = edge.querySelector<SVGGeometryElement>('path:not(.pele-marker), line, polyline')
+  const matrix = line?.getScreenCTM()
+  const length = line?.getTotalLength() ?? 0
+  if (!line || !matrix || !length) return [null, null]
+  const nearest = (point: DOMPoint) => {
+    let best: { key: string | null; distance: number } = { key: null, distance: Infinity }
+    for (const { key, el } of nodes) {
+      const box = el.getBoundingClientRect()
+      const distance = Math.hypot(
+        Math.max(box.left - point.x, 0, point.x - box.right),
+        Math.max(box.top - point.y, 0, point.y - box.bottom),
+      )
+      if (distance < best.distance) best = { key, distance }
+    }
+    return best.key
+  }
+  const ends: [string | null, string | null] = [
+    nearest(line.getPointAtLength(0).matrixTransform(matrix)),
+    nearest(line.getPointAtLength(length).matrixTransform(matrix)),
+  ]
+  edgeEnds.set(edge, ends)
+  return ends
+}
+
+/**
+ * When each part of the slide's diagrams appears, in narration characters: a node when the narration first names it
+ * (or a cue points at it), an arrow once both its ends are shown and its label is said, and messages, commits and
+ * timeline entries in their order. Nodes the narration never names show from the start, unless it names none: then
+ * they are spread over the narration. It also tints each node, and the arrows leaving it, with a color of its own.
+ */
+function diagramReveal(
+  root: HTMLElement,
+  narration: string,
+  cues: Array<{ start: number; at: PointerTarget }>,
+): Array<{ el: Element; start: number }> {
+  const parts: Array<{ el: Element; start: number }> = []
+  for (const svg of root.querySelectorAll(BUILT_DIAGRAM)) {
+    const sequenced = Array.from(svg.querySelectorAll(SEQUENCED))
+    const labelOf = (el: Element) => {
+      const id = el.getAttribute('data-id')
+      const label = id && el.matches('.pele-edge') ? svg.querySelector(`.pele-edge-label[data-id="${CSS.escape(id)}"]`) : null
+      return { label, text: (label ?? el).textContent ?? '' }
+    }
+    const order = sequenced.map(labelOf)
+    revealStarts(narration, order.map((entry) => entry.text)).forEach((start, i) => {
+      parts.push({ el: sequenced[i]!, start })
+      if (order[i]!.label) parts.push({ el: order[i]!.label!, start })
+    })
+
+    // Sequence actors are drawn twice, above and below the lifelines, under the same id: they appear together.
+    const groups = new Map<string, Array<Element>>()
+    for (const [index, el] of svg.querySelectorAll('.pele-node').entries()) {
+      if (sequenced.includes(el)) continue
+      const key = el.getAttribute('data-id') ?? `#${index}`
+      groups.set(key, [...(groups.get(key) ?? []), el])
+    }
+    const nodes = Array.from(groups, ([key, els]) => {
+      const label = (els[0]!.textContent ?? '').trim()
+      const lower = label.toLowerCase()
+      const pointed = cues
+        .filter((cue) => typeof cue.at === 'string' && cue.at.length > 0 && lower.includes(cue.at.toLowerCase()))
+        .map((cue) => cue.start)
+      const said = label.length >= 2 ? mentions(narration, label) : []
+      const fixed = els.some((el) => el.matches('.pele-actor'))
+      return { key, els, start: fixed ? 0 : Math.min(Infinity, ...said, ...pointed) }
+    })
+    const named = nodes.some((node) => Number.isFinite(node.start))
+    nodes.forEach((node, i) => {
+      if (!Number.isFinite(node.start)) node.start = named ? 0 : Math.round((narration.length * 0.85 * i) / nodes.length)
+    })
+    const startOf = new Map(nodes.map((node) => [node.key, node.start]))
+    const tones = new Map(nodes.map((node, i) => [node.key, String((i % MAX_TONES) + 1)]))
+    for (const node of nodes) {
+      for (const el of node.els) {
+        el.setAttribute('data-tone', tones.get(node.key)!)
+        parts.push({ el, start: node.start })
+      }
+    }
+
+    const measured = nodes.flatMap((node) => node.els.slice(-1).map((el) => ({ key: node.key, el })))
+    for (const edge of svg.querySelectorAll('.pele-edge')) {
+      edge.querySelectorAll(DRAWABLE).forEach(markDrawable)
+      if (sequenced.includes(edge)) continue
+      const [from, to] = endsOf(edge, measured)
+      const { label, text } = labelOf(edge)
+      const said = text.trim().length >= 3 ? mentions(narration, text) : []
+      const start = Math.max(startOf.get(from ?? '') ?? 0, startOf.get(to ?? '') ?? 0, said[0] ?? 0)
+      if (from && tones.has(from)) edge.setAttribute('data-tone', tones.get(from)!)
+      parts.push({ el: edge, start })
+      if (label) parts.push({ el: label, start })
+    }
+  }
+  return parts
 }
 
 /** Merges the fragments of some text into one box per rendered line, so a phrase that wraps is traced line by line. */

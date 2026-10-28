@@ -250,20 +250,54 @@ export const showDrawingBoardDef = toolDefinition({
   outputSchema: z.object({ shown: z.boolean() }),
 })
 
+const indexSchema = z.number().int().meta({ description: 'Index into items, from 0' })
+
+export const visualSchema = z.object({
+  kind: z
+    .enum(['bars', 'cells'])
+    .meta({ description: 'bars: numbers drawn as bars of matching height (prices, heights, values over time); cells: a row of boxes for any array or string (two pointers, sliding window, sorting, binary search).' }),
+  items: z
+    .array(z.string())
+    .min(2)
+    .max(12)
+    .meta({ description: 'The values in order, as short text; numbers only for bars, e.g. ["7", "1", "5"]' }),
+  steps: z
+    .array(
+      z.object({
+        say: z.string().meta({ description: 'A few words copied exactly from this slide\'s narration; the step plays when the narrator reaches them.' }),
+        marks: z
+          .array(z.object({ name: z.string().meta({ description: '1-2 words: i, left, min, Mua' }), at: indexSchema }))
+          .optional()
+          .meta({ description: 'Named labels under items. Giving a name a new index later slides it there. At most 3 names per slide.' }),
+        highlight: z.array(indexSchema).optional().meta({ description: 'Items in focus during this step; the rest dim.' }),
+        window: z.object({ from: indexSchema, to: indexSchema }).optional().meta({ description: 'A bracket around items from..to during this step.' }),
+        arrow: z.object({ from: indexSchema, to: indexSchema }).optional().meta({ description: 'A curved arrow between two items during this step.' }),
+        set: z.array(z.object({ at: indexSchema, value: z.string() })).optional().meta({ description: 'New values for items; they stay.' }),
+        swap: z.array(indexSchema).length(2).optional().meta({ description: 'Two positions whose items trade places; they stay swapped.' }),
+        note: z.string().optional().meta({ description: 'A short result shown large, like "Lời: 5"; it stays until another note, "" clears it.' }),
+        done: z.array(indexSchema).optional().meta({ description: 'Positions that are finished (sorted, visited); they stay.' }),
+      }),
+    )
+    .min(1)
+    .max(10)
+    .meta({ description: 'What changes, in narration order. highlight, window and arrow last only for their step; marks, values, order, note and done stay until changed.' }),
+})
+export type Visual = z.infer<typeof visualSchema>
+
 export const explainDeckInputSchema = z.object({
   title: z.string().meta({ description: 'Lesson title in the reply language, e.g. "React useEffect hoạt động thế nào"' }),
   slides: z
     .array(
       z.object({
         layout: z
-          .enum(['content', 'title', 'cards', 'quiz'])
+          .enum(['content', 'title', 'cards', 'quiz', 'visual'])
           .optional()
-          .meta({ description: 'How the slide is laid out: content (default, shows content), title (a big centered heading with content as a one-line subtitle), cards (shows cards), quiz (shows quiz and waits for the viewer to answer).' }),
+          .meta({ description: 'How the slide is laid out: content (default, shows content), title (a big centered heading with content as a one-line subtitle), cards (shows cards), quiz (shows quiz and waits for the viewer to answer), visual (animates visual step by step with the narration).' }),
         title: z.string().meta({ description: 'Short slide heading in the reply language' }),
         content: z
           .string()
           .optional()
-          .meta({ description: 'For the content layout, what the slide shows, as Markdown: a few bullets, one small fenced code block, a ```mermaid diagram, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together. For the title layout, a one-line subtitle.' }),
+          .meta({ description: 'For the content layout, what the slide shows, as Markdown: a few bullets, one small fenced code block, a ```mermaid diagram that builds as it is narrated, a ```svg drawing whose <g data-say> groups draw in as the narration reaches them, or a small table. No paragraphs. In mermaid, write each edge on a single line with its source, arrow, optional |label| and target together. For the title layout, a one-line subtitle.' }),
         cards: z
           .array(
             z.object({
@@ -287,6 +321,9 @@ export const explainDeckInputSchema = z.object({
           })
           .optional()
           .meta({ description: 'For the quiz layout: one multiple-choice question about what the lesson just covered.' }),
+        visual: visualSchema
+          .optional()
+          .meta({ description: 'For the visual layout: an array or a row of values that changes as the narration goes, for algorithms and data that move step by step.' }),
         narration: z
           .string()
           .meta({ description: 'What the narrator says while this slide is shown: 2-4 spoken sentences in the reply language, plain text without markdown, code or URLs.' }),

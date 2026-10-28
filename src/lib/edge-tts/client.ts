@@ -63,10 +63,10 @@ class EdgeTtsError extends Schema.TaggedError<EdgeTtsError>()('EdgeTtsError', {
   retryable: Schema.Boolean,
 }) {}
 
-/** Up to 2 retries with jittered backoff, only for retryable failures. */
+/** Up to 4 retries with jittered backoff, only for retryable failures; the service drops about a third of connections when busy. */
 const retrySchedule = Schedule.exponential('300 millis').pipe(
   Schedule.jittered,
-  Schedule.upTo({ times: 2 }),
+  Schedule.upTo({ times: 4 }),
   Schedule.setInputType<EdgeTtsError>(),
   Schedule.while(({ input }) => input.retryable),
 )

@@ -100,7 +100,7 @@ const messages = defineMessages({
 
 const abortError = () => new DOMException(messages[getLocale()].stopped, 'AbortError')
 
-function synthesize(input: SpeechGenerateInput, signal: AbortSignal) {
+function synthesize(input: SpeechGenerateInput, signal = new AbortController().signal) {
   return new Promise<TTSResult>((resolve, reject) => {
     if (signal.aborted) return reject(abortError())
     const client = new GenerationClient<SpeechGenerateInput, TTSResult>({
@@ -121,6 +121,85 @@ function synthesize(input: SpeechGenerateInput, signal: AbortSignal) {
         signal.removeEventListener('abort', onAbort)
         client.dispose()
       })
+  })
+}
+
+// The voice service drops connections when one client opens several at once, and each extra one slows the others
+// down, so at most this many syntheses run together. Waiting ones start in order, reads before preloads.
+const MAX_SYNTHESES = 2
+type Job = { start: () => void; urgent: boolean }
+let running = 0
+const queue: Array<Job> = []
+
+function enqueue(job: Job) {
+  if (!job.urgent) return queue.push(job)
+  const firstPreload = queue.findIndex((waiting) => !waiting.urgent)
+  queue.splice(firstPreload < 0 ? queue.length : firstPreload, 0, job)
+}
+
+function scheduled<T>(task: () => Promise<T>, urgent: boolean) {
+  let job!: Job
+  const done = new Promise<T>((resolve, reject) => {
+    job = {
+      urgent,
+      start: () => {
+        running++
+        task()
+          .then(resolve, reject)
+          .finally(() => {
+            running--
+            queue.shift()?.start()
+          })
+      },
+    }
+  })
+  if (running < MAX_SYNTHESES) job.start()
+  else enqueue(job)
+  /** Moves a preload that is still waiting ahead of the other preloads, once a read needs it. */
+  const hurry = () => {
+    const at = queue.indexOf(job)
+    if (at < 0 || job.urgent) return
+    queue.splice(at, 1)
+    job.urgent = true
+    enqueue(job)
+  }
+  return { done, hurry }
+}
+
+// Synthesized audio, newest last, so a read prepared ahead (the next slide) or read again starts without a wait.
+const CACHE_SIZE = 24
+const audioCache = new Map<string, ReturnType<typeof scheduled<TTSResult>>>()
+
+/**
+ * Audio for a request, from the cache or synthesized into it. A stopped read does not cancel the request, so
+ * the audio is still there when the same text is read again; a failed one is dropped so the next read retries.
+ * `urgent` is for a read that waits on it, as opposed to a preload.
+ */
+function cachedSpeech(input: SpeechGenerateInput, urgent: boolean) {
+  const key = JSON.stringify([input.text, input.voice, input.speed, input.modelOptions, input.timestamps])
+  let entry = audioCache.get(key)
+  if (entry) {
+    audioCache.delete(key)
+    if (urgent) entry.hurry()
+  } else {
+    // The voice service drops a request now and then; one more try saves the read. When that fails too, the first
+    // error says more (a quota or a bad key), so it is the one reported.
+    entry = scheduled(() => synthesize(input).catch((error) => synthesize(input).catch(() => Promise.reject(error))), urgent)
+    const created = entry
+    created.done.catch(() => audioCache.get(key) === created && audioCache.delete(key))
+  }
+  audioCache.set(key, entry)
+  while (audioCache.size > CACHE_SIZE) audioCache.delete(audioCache.keys().next().value!)
+  return entry.done
+}
+
+/** Settles like the promise, or rejects as soon as the read it belongs to is stopped. */
+function untilStopped<T>(promise: Promise<T>, signal: AbortSignal) {
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(abortError())
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
   })
 }
 
@@ -222,6 +301,17 @@ function trackWords(audio: HTMLAudioElement, startSeconds: Array<number>, onWord
   return () => cancelAnimationFrame(frame)
 }
 
+/**
+ * The request fields for the chosen voice service, and how much faster to play its audio: Gemini takes no speed,
+ * so its audio is sped up or slowed down instead.
+ */
+function voiceRequest({ engine, geminiModel, geminiVoice, voice, speed, pitch }: SpeechSettings) {
+  if (engine === 'gemini') {
+    return { fields: { voice: geminiVoice, modelOptions: { engine, model: geminiModel } }, rate: speed, timestamps: false }
+  }
+  return { fields: { voice, speed, modelOptions: { pitch } }, rate: 1, timestamps: true }
+}
+
 export type SpeakOptions = {
   /** Called with the character offset reached in the current segment's text, per word when the voice gives timings. */
   onProgress?: (offset: number) => void
@@ -229,6 +319,8 @@ export type SpeakOptions = {
   playbackRate?: number
   /** Loudness of the audio from 0 to 1; change it mid-read with `setVolume`. */
   volume?: number
+  /** Called when the read fails, as opposed to being stopped or replaced. */
+  onError?: (error: Error) => void
 }
 
 export type SpeakerStatus = 'idle' | 'loading' | 'playing'
@@ -238,6 +330,8 @@ export function useSpeaker() {
   const runRef = React.useRef<AbortController | null>(null)
   const audioRef = React.useRef<HTMLAudioElement | null>(null)
   const rateRef = React.useRef(1)
+  // The voice service's own rate factor, applied on top of the playback rate.
+  const engineRateRef = React.useRef(1)
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [status, setStatus] = React.useState<SpeakerStatus>('idle')
   const [error, setError] = React.useState<Error | undefined>()
@@ -255,7 +349,7 @@ export function useSpeaker() {
       id: string,
       content: string | Array<SpeechSegment>,
       overrides?: Partial<SpeechSettings>,
-      { onProgress, playbackRate = 1, volume = 1 }: SpeakOptions = {},
+      { onProgress, playbackRate = 1, volume = 1, onError }: SpeakOptions = {},
     ) => {
       runRef.current?.abort()
       rateRef.current = playbackRate
@@ -269,7 +363,8 @@ export function useSpeaker() {
         return false
       }
 
-      const { voice, speed, pitch } = { ...settings, ...overrides }
+      const voice = voiceRequest({ ...settings, ...overrides })
+      engineRateRef.current = voice.rate
       const audio = (audioRef.current ??= new Audio())
       // The element is shared, so a read that sets no volume must not inherit the last one's; a new source keeps it.
       audio.volume = volume
@@ -277,8 +372,11 @@ export function useSpeaker() {
       const cursors = new Map<HTMLElement, { value: number }>()
       const pending: Array<Promise<TTSResult>> = []
       const request = (i: number) => {
-        pending[i] ??= synthesize(
-          { text: chunks[i]!.text, voice, speed, modelOptions: { pitch }, timestamps: canHighlightWords || Boolean(onProgress) },
+        pending[i] ??= untilStopped(
+          cachedSpeech(
+            { text: chunks[i]!.text, ...voice.fields, timestamps: voice.timestamps && (canHighlightWords || Boolean(onProgress)) },
+            true,
+          ),
           signal,
         )
         pending[i].catch(() => {})
@@ -322,7 +420,12 @@ export function useSpeaker() {
             stopTracking = trackEstimatedWords(audio, text, (start) => onProgress(offset + start))
           }
           try {
-            await play(audio, result, signal, rateRef.current)
+            await play(audio, result, signal, rateRef.current * voice.rate).catch((e: Error) => {
+              // A blocked autoplay fails again until the user interacts; other failures (a source that did not
+              // decode, a play interrupted by a load) usually pass on a second try.
+              if (signal.aborted || e.name === 'NotAllowedError') throw e
+              return play(audio, result, signal, rateRef.current * voice.rate)
+            })
           } finally {
             stopTracking?.()
             if (ranges) CSS.highlights.delete(WORD_HIGHLIGHT)
@@ -330,7 +433,11 @@ export function useSpeaker() {
         }
         finished = true
       } catch (e) {
-        if (!signal.aborted) setError(e as Error)
+        if (!signal.aborted) {
+          console.warn('speech failed', e)
+          setError(e as Error)
+          onError?.(e as Error)
+        }
       } finally {
         highlighted?.removeAttribute('data-speaking')
         if (runRef.current === run) {
@@ -344,10 +451,25 @@ export function useSpeaker() {
     [settings, stop],
   )
 
+  /**
+   * Synthesizes the start of some content ahead of reading it, so `speak` with the same content, settings and
+   * `onProgress` (or not) starts at once.
+   */
+  const preload = React.useCallback(
+    (content: string | Array<SpeechSegment>, overrides?: Partial<SpeechSettings>, { progress = false } = {}) => {
+      const voice = voiceRequest({ ...settings, ...overrides })
+      const timestamps = voice.timestamps && ((typeof CSS !== 'undefined' && 'highlights' in CSS) || progress)
+      for (const { text } of toChunks(content).slice(0, PREFETCH)) {
+        cachedSpeech({ text, ...voice.fields, timestamps }, false).catch(() => {})
+      }
+    },
+    [settings],
+  )
+
   /** Changes the speed of the read in progress, including the chunk playing now. */
   const setPlaybackRate = React.useCallback((rate: number) => {
     rateRef.current = rate
-    if (runRef.current && audioRef.current) audioRef.current.playbackRate = rate
+    if (runRef.current && audioRef.current) audioRef.current.playbackRate = rate * engineRateRef.current
   }, [])
 
   /** Changes the loudness of the read in progress. */
@@ -357,5 +479,5 @@ export function useSpeaker() {
 
   React.useEffect(() => () => runRef.current?.abort(), [])
 
-  return { speak, stop, setPlaybackRate, setVolume, activeId, status, error }
+  return { speak, preload, stop, setPlaybackRate, setVolume, activeId, status, error }
 }

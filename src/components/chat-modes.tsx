@@ -45,6 +45,7 @@ const messages = defineMessages({
       fun: { name: 'Vui', description: 'Hài hước, châm biếm nhẹ, vẫn chính xác' },
       deep: { name: 'Chuyên sâu', description: 'Đào tới cơ chế bên trong' },
       tldr: { name: 'TL;DR', description: '3–4 slide, vào thẳng ý chính' },
+      visual: { name: 'Trực quan', description: 'Sơ đồ, hình vẽ và mô phỏng chạy theo lời giảng' },
     } satisfies Record<ExplainStyleId, { name: string; description: string }>,
     modes: {
       leetcode: {
@@ -96,6 +97,7 @@ const messages = defineMessages({
       fun: { name: 'Fun', description: 'Funny and a bit sarcastic, still accurate' },
       deep: { name: 'Deep dive', description: 'Down to what happens under the hood' },
       tldr: { name: 'TL;DR', description: '3–4 slides, straight to the point' },
+      visual: { name: 'Visual', description: 'Diagrams, drawings and simulations that move with the narration' },
     },
     modes: {
       leetcode: {

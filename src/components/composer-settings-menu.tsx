@@ -6,7 +6,7 @@ import { cn } from 'cn'
 import { InputGroupButton } from '@/components/ui/input-group'
 import { defineMessages, useMessages } from '@/lib/i18n'
 import { setChatSetting, useChatSettings, useChatToggles } from '@/lib/chat-settings'
-import { setSpeechSettings, useSpeechSettings } from '@/lib/speech-settings'
+import { GEMINI_VOICES, setSpeechSettings, useSpeechSettings } from '@/lib/speech-settings'
 import { languageName, localeOf, shortName, useLocales, useVoices, voiceLocale } from '@/lib/voices'
 
 const messages = defineMessages({
@@ -124,6 +124,7 @@ function AutoReadSubmenu() {
   const locale = localeOf(settings.voice)
   const localeVoices = (voices ?? []).filter((v) => voiceLocale(v) === locale)
   const currentVoice = voices?.find((v) => v.voiceId === settings.voice)
+  const gemini = settings.engine === 'gemini'
 
   return (
     <Menu.SubmenuRoot>
@@ -146,60 +147,80 @@ function AutoReadSubmenu() {
           format={(v) => `${v.toFixed(2)}×`}
           onChange={(speed) => setSpeechSettings({ speed })}
         />
-        <MenuSlider
-          label={t.pitch}
-          min={-30}
-          max={30}
-          step={1}
-          value={settings.pitch}
-          format={(v) => `${v > 0 ? '+' : ''}${v} Hz`}
-          onChange={(pitch) => setSpeechSettings({ pitch })}
-        />
+        {!gemini && (
+          <MenuSlider
+            label={t.pitch}
+            min={-30}
+            max={30}
+            step={1}
+            value={settings.pitch}
+            format={(v) => `${v > 0 ? '+' : ''}${v} Hz`}
+            onChange={(pitch) => setSpeechSettings({ pitch })}
+          />
+        )}
 
         <Menu.Separator className="-mx-1 my-1 h-px bg-border" />
 
-        <Menu.SubmenuRoot>
-          <SubmenuTrigger label={t.language} value={languageName(locale)} />
-          <SubmenuPopup className="max-h-80 overflow-y-auto">
-            <VoicesState voices={voices} error={error}>
+        {gemini ? (
+          <Menu.SubmenuRoot>
+            <SubmenuTrigger label={t.voice} value={settings.geminiVoice} />
+            <SubmenuPopup className="max-h-80 overflow-y-auto">
               <Menu.RadioGroup
-                value={locale}
-                onValueChange={(next: string) => {
-                  const voice = voices?.find((v) => voiceLocale(v) === next)
-                  if (voice) setSpeechSettings({ voice: voice.voiceId })
-                }}
+                value={settings.geminiVoice}
+                onValueChange={(geminiVoice: string) => setSpeechSettings({ geminiVoice })}
               >
-                {locales.map((l) => (
-                  <RadioItem key={l.value} value={l.value} label={l.label} />
+                {GEMINI_VOICES.map((voice) => (
+                  <RadioItem key={voice} value={voice} label={voice} />
                 ))}
               </Menu.RadioGroup>
-            </VoicesState>
-          </SubmenuPopup>
-        </Menu.SubmenuRoot>
+            </SubmenuPopup>
+          </Menu.SubmenuRoot>
+        ) : (
+          <>
+            <Menu.SubmenuRoot>
+              <SubmenuTrigger label={t.language} value={languageName(locale)} />
+              <SubmenuPopup className="max-h-80 overflow-y-auto">
+                <VoicesState voices={voices} error={error}>
+                  <Menu.RadioGroup
+                    value={locale}
+                    onValueChange={(next: string) => {
+                      const voice = voices?.find((v) => voiceLocale(v) === next)
+                      if (voice) setSpeechSettings({ voice: voice.voiceId })
+                    }}
+                  >
+                    {locales.map((l) => (
+                      <RadioItem key={l.value} value={l.value} label={l.label} />
+                    ))}
+                  </Menu.RadioGroup>
+                </VoicesState>
+              </SubmenuPopup>
+            </Menu.SubmenuRoot>
 
-        <Menu.SubmenuRoot>
-          <SubmenuTrigger
-            label={t.voice}
-            value={currentVoice ? shortName(currentVoice) : settings.voice}
-          />
-          <SubmenuPopup className="max-h-80 overflow-y-auto">
-            <VoicesState voices={voices} error={error}>
-              <Menu.RadioGroup
-                value={settings.voice}
-                onValueChange={(voice: string) => setSpeechSettings({ voice })}
-              >
-                {localeVoices.map((v) => (
-                  <RadioItem
-                    key={v.voiceId}
-                    value={v.voiceId}
-                    label={shortName(v)}
-                    hint={v.labels?.gender === 'Female' ? t.female : t.male}
-                  />
-                ))}
-              </Menu.RadioGroup>
-            </VoicesState>
-          </SubmenuPopup>
-        </Menu.SubmenuRoot>
+            <Menu.SubmenuRoot>
+              <SubmenuTrigger
+                label={t.voice}
+                value={currentVoice ? shortName(currentVoice) : settings.voice}
+              />
+              <SubmenuPopup className="max-h-80 overflow-y-auto">
+                <VoicesState voices={voices} error={error}>
+                  <Menu.RadioGroup
+                    value={settings.voice}
+                    onValueChange={(voice: string) => setSpeechSettings({ voice })}
+                  >
+                    {localeVoices.map((v) => (
+                      <RadioItem
+                        key={v.voiceId}
+                        value={v.voiceId}
+                        label={shortName(v)}
+                        hint={v.labels?.gender === 'Female' ? t.female : t.male}
+                      />
+                    ))}
+                  </Menu.RadioGroup>
+                </VoicesState>
+              </SubmenuPopup>
+            </Menu.SubmenuRoot>
+          </>
+        )}
       </SubmenuPopup>
     </Menu.SubmenuRoot>
   )

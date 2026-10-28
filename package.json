@@ -45,6 +45,7 @@
     "@tanstack/react-virtual": "^3.14.22",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
+    "dompurify": "^3.4.17",
     "effect": "^4.0.6",
     "frimousse": "^0.4.0",
     "pele": "^1.9.0",
