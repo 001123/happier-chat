@@ -463,8 +463,9 @@ export const Route = createFileRoute('/api/chat')({
           parentRunId,
           resume,
           tools: [getWeather, setThemeDef, sendEmail, reactToMessage, webSearch, fetchPage, showMap, learnWord, showQuiz, roleplayTurn, showDrawingBoard, explainDeckFor(explainStyle), showScene, renderUi, ...codeMode.tools],
-          // Only the Messages API makes max_tokens mandatory; Gemini and Ollama fall back to the model's own output limit.
-          modelOptions: resolved.api === 'anthropic' ? { max_tokens: 16000 } : {},
+          // The Anthropic adapter defaults max_tokens to its own table (64K for ids it does not know);
+          // models.dev also knows ids from proxies, so prefer its output limit when it lists the model.
+          modelOptions: resolved.api === 'anthropic' && target.info?.output ? { max_tokens: target.info.output } : {},
           reasoning: effort,
           // The default cap of 5 model turns ends research runs (search + several fetch_page calls)
           // right after a tool call, before the model gets to write a reply. finalStep forces one.
