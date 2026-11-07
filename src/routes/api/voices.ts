@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { listVoices } from '@tanstack/ai'
+import { listVoices } from '@tanstack/ai-effect'
+import { Effect } from 'effect'
 
 import { edgeSpeech } from '@/lib/edge-tts/adapter'
 
 let cached: Promise<Response> | null = null
 
 function load() {
-  return listVoices({ adapter: edgeSpeech() }).then(({ voices }) => Response.json(voices))
+  return Effect.runPromise(listVoices({ adapter: edgeSpeech() })).then(({ voices }) => Response.json(voices))
 }
 
 export const Route = createFileRoute('/api/voices')({

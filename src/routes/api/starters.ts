@@ -1,11 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { chat } from '@tanstack/ai'
+import * as AI from '@tanstack/ai-effect'
+import { Effect } from 'effect'
 import { z } from 'zod'
 
 import { defineMessages, getLocale } from '@/lib/i18n'
 import { EXPLAIN_STYLE_PROMPTS, isExplainStyleId, isModeId } from '@/lib/modes'
 import type { ModeId } from '@/lib/modes'
 import { parseModelKey } from '@/lib/providers'
+import { runRoute, tryAI } from '@/server/ai-effect.server'
 import { createUserAdapter } from '@/server/providers.server'
 import { getSessionUser } from '@/server/session.server'
 
@@ -53,10 +55,10 @@ export const Route = createFileRoute('/api/starters')({
           ? body.avoid.filter((item): item is string => typeof item === 'string').slice(0, 20)
           : []
 
-        try {
-          const threadId = crypto.randomUUID()
-          const resolved = createUserAdapter(user.id, selected.providerId, selected.modelId, threadId)
-          const { starters } = await chat({
+        const threadId = crypto.randomUUID()
+        const program = Effect.gen(function* () {
+          const resolved = yield* tryAI(() => createUserAdapter(user.id, selected.providerId, selected.modelId, threadId))
+          const { starters } = yield* AI.chat({
             adapter: resolved.adapter,
             systemPrompts: [
               'You suggest first messages a user could send to start a chat with a learning assistant.',
@@ -77,21 +79,17 @@ export const Route = createFileRoute('/api/starters')({
             threadId,
             outputSchema: StartersSchema,
             modelOptions: resolved.api === 'anthropic' ? { max_tokens: 1024 } : {},
-            abortController: abortFrom(request.signal),
           })
           const cleaned = [...new Set(starters.map((s) => s.trim()).filter(Boolean))].slice(0, 5)
           return Response.json({ starters: cleaned })
-        } catch (error) {
-          if (request.signal.aborted) return new Response(null, { status: 499 })
-          return Response.json({ error: (error as Error).message, starters: [] }, { status: 502 })
-        }
+        }).pipe(
+          Effect.catchTag('AIError', (error) =>
+            Effect.succeed(Response.json({ error: error.message, starters: [] }, { status: 502 })),
+          ),
+        )
+        return runRoute(program, request)
       },
     },
   },
 })
 
-function abortFrom(signal: AbortSignal) {
-  const controller = new AbortController()
-  signal.addEventListener('abort', () => controller.abort(), { once: true })
-  return controller
-}

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { generateSpeech, generationParamsFromRequest, toServerSentEventsResponse } from '@tanstack/ai'
+import { generationParamsFromRequest, toServerSentEventsResponse } from '@tanstack/ai'
+import { generateSpeech } from '@tanstack/ai-effect'
 import { createGeminiSpeech } from '@tanstack/ai-gemini'
 import type { GeminiTTSModels } from '@tanstack/ai-gemini'
 
@@ -9,6 +10,7 @@ type GeminiTTSModel = (typeof GeminiTTSModels)[number]
 import { defineMessages, getLocale } from '@/lib/i18n'
 import { edgeSpeech } from '@/lib/edge-tts/adapter'
 import { GEMINI_VOICES, OPENROUTER_TTS_MODELS } from '@/lib/speech-settings'
+import { toIterable } from '@/server/ai-effect.server'
 import { getSessionUser } from '@/server/session.server'
 import { openrouterSpeech, openrouterSpeechKey } from '@/server/openrouter-speech.server'
 import { withEstimatedTimestamps } from '@/server/speech-alignment.server'
@@ -72,7 +74,7 @@ export const Route = createFileRoute('/api/tts')({
           model?: string
           pitch?: number
         }
-        const common = { text, stream: true as const, threadId, runId, abortSignal: request.signal }
+        const common = { text, stream: true as const, threadId, runId }
 
         if (engine === 'gemini') {
           const user = getSessionUser()
@@ -89,7 +91,7 @@ export const Route = createFileRoute('/api/tts')({
             middleware: [speechUsageMiddleware(user.id, 'gemini', text.length)],
             voice: GEMINI_VOICES.includes(input.voice ?? '') ? input.voice : 'Kore',
           })
-          return toServerSentEventsResponse(stream, SSE_INIT)
+          return toServerSentEventsResponse(toIterable(stream, request.signal), SSE_INIT)
         }
 
         if (engine === 'openrouter') {
@@ -107,7 +109,7 @@ export const Route = createFileRoute('/api/tts')({
             voice: listed.voices.includes(input.voice ?? '') ? input.voice : listed.voices[0],
             middleware: [speechUsageMiddleware(user.id, 'openrouter', text.length)],
           })
-          return toServerSentEventsResponse(stream, SSE_INIT)
+          return toServerSentEventsResponse(toIterable(stream, request.signal), SSE_INIT)
         }
 
         const stream = generateSpeech({
@@ -120,7 +122,7 @@ export const Route = createFileRoute('/api/tts')({
           modelOptions,
           timestamps: input.timestamps,
         })
-        return toServerSentEventsResponse(stream, SSE_INIT)
+        return toServerSentEventsResponse(toIterable(stream, request.signal), SSE_INIT)
       },
     },
   },

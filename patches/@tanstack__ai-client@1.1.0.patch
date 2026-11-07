@@ -1,8 +1,8 @@
 diff --git a/dist/esm/chat-client.js b/dist/esm/chat-client.js
-index 1ce541592ab9b113a261d5e8f816b24136b5f519..13110d1e09d8fbff4a0933e2bc71a6c08215f29b 100644
+index 18f6433..ab41639 100644
 --- a/dist/esm/chat-client.js
 +++ b/dist/esm/chat-client.js
-@@ -154,6 +154,7 @@ var REJOIN_REBUILD_TRIGGERS = /* @__PURE__ */ new Set([
+@@ -199,6 +199,7 @@ var REJOIN_REBUILD_TRIGGERS = /* @__PURE__ */ new Set([
  	"SUBAGENT_STARTED"
  ]);
  function rebuildsAssistantMessage(chunk) {
