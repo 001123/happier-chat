@@ -64,7 +64,7 @@
   },
   "devDependencies": {
     "@durable-streams/server": "^0.3.9",
-    "@tanstack/devtools-vite": "^0.8.5",
+    "@tanstack/devtools-vite": "^0.8.6",
     "@tanstack/intent": "^0.5.6",
     "@tanstack/react-ai-devtools": "^1.0.1",
     "@tanstack/react-devtools": "^0.10.13",

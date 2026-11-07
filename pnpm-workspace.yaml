@@ -35,10 +35,6 @@ patchedDependencies:
   # A rejoined run drops the assistant message its own REASONING_MESSAGE_START just created (the start carries
   # metadata), so the replayed thinking and every later part land on a message no longer in the list.
   '@tanstack/ai-client@1.1.0': patches/@tanstack__ai-client@1.1.0.patch
-  # Drops the `intent` bin that shadows @tanstack/intent's CLI and fails with ERR_PACKAGE_PATH_NOT_EXPORTED.
-  # Remove once https://github.com/TanStack/devtools/pull/542 is released
-  # (issue: https://github.com/TanStack/devtools/issues/525).
-  '@tanstack/devtools-vite': patches/@tanstack__devtools-vite.patch
 
 allowBuilds:
   '@google/genai': set this to true or false
